@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">DOMino Galería</string>
+    <string name="title_activity_main">DOMino Galería</string>
+    <string name="package_name">com.thedomstudio.galeria</string>
+    <string name="custom_url_scheme">com.thedomstudio.galeria</string>
+</resources>

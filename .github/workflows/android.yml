@@ -1,0 +1,58 @@
+name: Compilar APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Dependencias y sincronización
+        run: |
+          npm ci
+          cp node_modules/@capacitor/core/dist/capacitor.js www/capacitor.js
+          npx cap sync android
+
+      - name: Compilar
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+          cp app/build/outputs/apk/debug/app-debug.apk ../DOMino-Galeria.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DOMino-Galeria-apk
+          path: DOMino-Galeria.apk
+
+      - name: Publicar en Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete apk --yes --cleanup-tag || true
+          gh release create apk DOMino-Galeria.apk \
+            --target "${{ github.sha }}" \
+            --title "DOMino Galería — última versión" \
+            --notes "APK compilada automáticamente desde ${GITHUB_SHA::7}. Descargala desde el teléfono e instalala." \
+            --latest

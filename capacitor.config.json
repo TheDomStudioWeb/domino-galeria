@@ -1,0 +1,15 @@
+{
+  "appId": "com.thedomstudio.galeria",
+  "appName": "DOMino Galería",
+  "webDir": "www",
+  "backgroundColor": "#0A0A0A",
+  "android": {
+    "allowMixedContent": false
+  },
+  "plugins": {
+    "SystemBars": {
+      "style": "DARK",
+      "insetsHandling": "css"
+    }
+  }
+}

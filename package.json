@@ -1,0 +1,16 @@
+{
+  "name": "domino-galeria",
+  "version": "1.0.0",
+  "private": true,
+  "description": "DOMino Galería — indexa y busca las fotos del teléfono",
+  "scripts": {
+    "sync": "cap sync android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/core": "^8.5.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.5.3"
+  }
+}
