@@ -78,6 +78,37 @@ input[type=date]{color-scheme:dark}
 .sign{margin-top:18px;color:var(--mut);font-size:11px;line-height:1.5;text-align:center}
 .msg{padding:10px 12px;border:1px solid var(--gold);background:var(--panel2);margin-top:10px;font-size:13px;line-height:1.5}
 .empty{padding:30px 10px;text-align:center;color:var(--mut)}
+.btn.danger{background:#E5634D;border-color:#E5634D;color:#0A0A0A}
+.btn.sec.danger{background:transparent;color:#E5634D;border-color:#E5634D}
+.sel-bar.pap [data-m],.sel-bar.pap #sel-carpeta,.sel-bar.pap #sel-borrar{display:none}
+.sel-bar:not(.pap) .solopap{display:none}
+#viewer.pap [data-vm],#viewer.pap [data-vx=carpeta],#viewer.pap [data-vx=borrar]{display:none}
+#viewer:not(.pap) [data-vx=rest],#viewer:not(.pap) [data-vx=def]{display:none}
+.modal{position:fixed;inset:0;background:#000c;z-index:30;display:none;align-items:center;justify-content:center;padding:20px}
+.modal.on{display:flex}
+.modal .box{background:var(--panel);border:1px solid var(--gold);padding:16px;width:100%;max-width:420px}
+.modal h3{margin:0 0 8px;font:600 13px 'Montserrat',sans-serif;letter-spacing:.1em;text-transform:uppercase;color:var(--gold2)}
+.modal .row{margin-top:12px;flex-wrap:nowrap}
+.modal .row .btn{flex:1}
+#toast{position:fixed;left:12px;right:12px;bottom:calc(var(--bar) + var(--bot) + 76px);background:var(--panel2);border:1px solid var(--gold);padding:10px 12px;font-size:13px;line-height:1.45;z-index:40;display:none}
+#toast.on{display:block}
+#dup{position:fixed;inset:0;background:var(--bg);z-index:12;display:none;flex-direction:column}
+#dup.on{display:flex}
+#dup .top{padding:calc(var(--top) + 10px) 14px 10px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:8px}
+#dup .top b{color:var(--gold);font:700 15px 'Cinzel',Georgia,serif;letter-spacing:.05em}
+#dup .lista{flex:1;overflow-y:auto;padding:10px 12px;-webkit-overflow-scrolling:touch}
+#dup .pie{border-top:1px solid var(--gold);background:var(--panel);padding:10px 12px calc(var(--bot) + 10px);display:flex;flex-direction:column;gap:8px}
+#dup .pie .row .btn{flex:1}
+.grp{background:var(--panel);border:1px solid var(--line);padding:8px;margin-bottom:10px}
+.grp .fila{display:flex;gap:4px;flex-wrap:wrap}
+.grp .tile{width:calc(33.333% - 3px);flex:none}
+.grp small{display:block;color:var(--mut);font-size:11px;margin:6px 2px 0}
+.tile .badge{position:absolute;left:0;top:0;padding:2px 6px;font:700 10px 'Montserrat',sans-serif;background:var(--ok);color:#0A0A0A}
+.tile.borrar{border-color:#E5634D}
+.tile.borrar .ck{display:block;background:#E5634D}
+.tile.queda{opacity:.55}
+.tile.queda .tag{color:var(--tx)}
+.carp{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
 </style>
 </head>
 <body>
@@ -157,6 +188,36 @@ input[type=date]{color-scheme:dark}
   <div class="row" style="margin-top:10px"><button class="btn sec block" id="m-mas" hidden>Ver más</button></div>
 </section>
 
+<section id="v-ordenar">
+  <div class="card">
+    <h2>Fotos repetidas</h2>
+    <p><b id="o-rep-n">0</b> fotos repetidas encontradas. Se muestran en grupos: <b>una queda como original</b> y el resto se puede eliminar de una vez.</p>
+    <button class="btn block" id="o-rep">Ver y eliminar repetidas</button>
+  </div>
+  <div class="card">
+    <h2>Papelera</h2>
+    <p class="mut">Lo que eliminás acá no se pierde enseguida: va a una papelera de la app y se puede restaurar hasta que la vacíes.</p>
+    <p><b id="o-pap-n">0</b> fotos · <b id="o-pap-mb">0</b> MB</p>
+    <div class="row">
+      <button class="btn sec" id="o-pap-ver">Ver papelera</button>
+      <button class="btn sec" id="o-pap-rest">Restaurar todo</button>
+      <button class="btn sec danger" id="o-pap-vaciar">Vaciar papelera</button>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Mis carpetas</h2>
+    <p class="mut">Elegí fotos (mantené apretada una foto, o «Seleccionar»), tocá <b>Carpeta…</b> y ponele nombre. Se guardan en <b>Imágenes / DOMino-Carpetas</b>.</p>
+    <div class="carp" id="o-carp"><span class="mut">Todavía no armaste carpetas.</span></div>
+  </div>
+  <div class="count" id="o-tit"></div>
+  <div class="row" id="o-ops" style="margin-bottom:6px" hidden>
+    <button class="btn sec" id="o-modo">Seleccionar</button>
+  </div>
+  <div class="count" id="o-count"></div>
+  <div class="grid" id="o-grid"></div>
+  <div class="row" style="margin-top:10px"><button class="btn sec block" id="o-mas" hidden>Ver más</button></div>
+</section>
+
 </main>
 
 <div class="sel-bar" id="selbar">
@@ -165,6 +226,10 @@ input[type=date]{color-scheme:dark}
   <button class="btn" data-m="plan">Plan</button>
   <button class="btn sec" data-m="descartar">Descartar</button>
   <button class="btn sec" data-m="">Quitar marca</button>
+  <button class="btn sec" id="sel-carpeta">Carpeta…</button>
+  <button class="btn sec danger" id="sel-borrar">Eliminar</button>
+  <button class="btn solopap" id="sel-rest">Restaurar</button>
+  <button class="btn sec danger solopap" id="sel-def">Borrar para siempre</button>
   <button class="btn ghost" id="sel-x">Cancelar</button>
 </div>
 
@@ -176,13 +241,40 @@ input[type=date]{color-scheme:dark}
     <button class="btn" data-vm="entrega">Entrega</button>
     <button class="btn" data-vm="plan">Plan</button>
     <button class="btn sec" data-vm="descartar">Descartar</button>
+    <button class="btn sec" data-vx="carpeta">Carpeta…</button>
+    <button class="btn sec danger" data-vx="borrar">Eliminar</button>
+    <button class="btn" data-vx="rest">Restaurar</button>
+    <button class="btn sec danger" data-vx="def">Borrar para siempre</button>
   </div>
 </div>
+
+<div id="dup">
+  <div class="top"><b>Repetidas</b><button class="btn ghost" id="dup-x" style="min-height:36px">Cerrar</button></div>
+  <div class="lista" id="dup-lista"></div>
+  <div class="pie">
+    <div class="count" id="dup-res" style="margin:0"></div>
+    <div class="row">
+      <button class="btn sec" id="dup-todas">Marcar todas</button>
+      <button class="btn sec" id="dup-ninguna">Desmarcar todas</button>
+    </div>
+    <button class="btn danger block" id="dup-borrar">Eliminar las marcadas</button>
+  </div>
+</div>
+
+<div class="modal" id="modal"><div class="box">
+  <h3 id="md-t"></h3>
+  <p id="md-p"></p>
+  <input id="md-in" list="md-dl" hidden autocomplete="off" maxlength="60">
+  <datalist id="md-dl"></datalist>
+  <div class="row"><button class="btn sec" id="md-no">Cancelar</button><button class="btn" id="md-ok">Aceptar</button></div>
+</div></div>
+<div id="toast"></div>
 
 <nav>
   <button data-tab="indexar" class="on"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/></svg>Indexar</button>
   <button data-tab="buscar"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.2-4.2"/></svg>Buscar</button>
   <button data-tab="marcadas"><svg viewBox="0 0 24 24"><path d="M5 4h14v17l-7-4-7 4z"/></svg>Marcadas</button>
+  <button data-tab="ordenar"><svg viewBox="0 0 24 24"><path d="M3 7h7l2 2h9v10H3z"/></svg>Ordenar</button>
 </nav>
 
 <script src="capacitor.js"></script>
@@ -193,7 +285,7 @@ const NATIVE = !!(CAP && CAP.isNativePlatform && CAP.isNativePlatform());
 const G = NATIVE ? CAP.registerPlugin('Galeria') : (function(){
   const hoy = Date.now(), items = [];
   for (let i = 0; i < 260; i++) items.push({id:i+1, nombre:'IMG_'+i+'.jpg', fecha:new Date(hoy - i*86400000*5).toISOString().slice(0,10), origen:i%3?'WhatsApp':'Cámara (Camera)', caras:i%2, etiquetas:i%2?'car,vehicle':'text', texto:i%4?'x5 plan de ahorro':'', marca:i%11===0?'entrega':(i%17===0?'plan':'')});
-  const est = {corriendo:false, fase:'Analizando fotos', hechas:0, total:0, registradas:30412, repetidas:6120, analizadas:0, pendientes:24292, errores:0, entregas:57, planes:14, descartadas:3, segundos:0, error:''};
+  const est = {corriendo:false, fase:'Analizando fotos', hechas:0, total:0, registradas:30412, repetidas:7000, papelera:5, papeleraMB:20, analizadas:0, pendientes:24292, errores:0, entregas:57, planes:14, descartadas:3, segundos:0, error:''};
   return {
     permiso: async () => ({ok:true}), pedirPermiso: async () => {},
     iniciar: async () => { est.corriendo = true; est.total = 24292; est.hechas = 3100; est.segundos = 620; est.analizadas = 3100; est.pendientes = 21192; },
@@ -202,7 +294,12 @@ const G = NATIVE ? CAP.registerPlugin('Galeria') : (function(){
     buscar: async (p) => ({total:items.length, items:items.slice(p.offset||0,(p.offset||0)+(p.limite||60))}),
     miniaturas: async (p) => { const o = {}; (p.ids||[]).forEach(id => { const h = (id*47)%360; o[id] = 'data:image/svg+xml;utf8,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><rect width="200" height="200" fill="hsl('+h+',35%,32%)"/><circle cx="100" cy="90" r="34" fill="hsl('+h+',35%,55%)"/></svg>'); }); return o; },
     vista: async (p) => ({img:'data:image/svg+xml;utf8,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600"><rect width="800" height="600" fill="#33414f"/><circle cx="400" cy="260" r="110" fill="#6d8299"/></svg>')}),
-    marcar: async () => {}, exportar: async () => ({copiadas:71, entregas:57, planes:14, fallas:0, carpeta:'/storage/emulated/0/Pictures/X5-Historia', zip:'/storage/emulated/0/Pictures/X5-Historia_20261106.zip'})
+    marcar: async () => {},
+    eliminar: async (p) => ({movidas:(p.ids||[]).length, fallas:0, sinOriginal:0, mb:12}), restaurar: async () => ({restauradas:3, fallas:0}), vaciarPapelera: async () => ({borradas:5, mb:20}),
+    repetidas: async (p) => { const gs = []; for (let g = (p.offset||0); g < Math.min(37, (p.offset||0) + (p.limite||20)); g++) { const n = 1 + g % 3, c = []; for (let k = 0; k < n; k++) c.push({id:1000 + g*10 + k + 1, nombre:'IMG-copia'+k+'.jpg', origen:k ? 'WhatsApp' : 'Cámara', fecha:'2026-10-0'+(1+g%9), mb:2.1}); gs.push({orig:{id:1000+g*10, nombre:'IMG-original.jpg', origen:'Cámara (Camera)', fecha:'2026-10-0'+(1+g%9), mb:2.4}, copias:c}); } return {totalGrupos:37, totalCopias:37*2, sinOriginal:4, grupos:gs}; },
+    idsRepetidas: async () => { const ids = []; for (let g = 0; g < 37; g++) for (let k = 1; k <= 1 + g % 3; k++) ids.push(1000 + g*10 + k); return {ids}; },
+    carpeta: async (p) => ({movidas:(p.ids||[]).length, fallas:0, carpeta:'/storage/emulated/0/Pictures/DOMino-Carpetas/'+p.nombre}), carpetas: async () => ({carpetas:[{nombre:'Entregas 2022', cantidad:12},{nombre:'Salón', cantidad:4}], ruta:''}),
+    exportar: async () => ({copiadas:71, entregas:57, planes:14, fallas:0, carpeta:'/storage/emulated/0/Pictures/X5-Historia', zip:'/storage/emulated/0/Pictures/X5-Historia_20261106.zip'})
   };
 })();
 
@@ -219,11 +316,12 @@ function irA(t){
   if (t === 'indexar') refrescarEstado();
   if (t === 'buscar' && !B.hecho) buscar(true);
   if (t === 'marcadas'){ refrescarEstado(); if (!M.hecho) verMarca(M.marca || 'entrega'); }
+  if (t === 'ordenar') refrescarOrdenar();
 }
 $$('nav button').forEach(b => b.onclick = () => irA(b.dataset.tab));
 
 /* ---------- Indexar ---------- */
-let poll = null;
+let poll = null, ULT = {};
 function fmt(n){ return Number(n || 0).toLocaleString('es-AR'); }
 function dur(s){ s = Math.max(0, Math.round(s)); const h = Math.floor(s/3600), m = Math.floor(s%3600/60); return h ? h + ' h ' + m + ' min' : (m ? m + ' min' : s + ' s'); }
 async function refrescarEstado(){
@@ -231,6 +329,7 @@ async function refrescarEstado(){
   $('#k-reg').textContent = fmt(e.registradas); $('#k-rep').textContent = fmt(e.repetidas);
   $('#k-ana').textContent = fmt(e.analizadas); $('#k-pen').textContent = fmt(e.pendientes);
   $('#m-ent').textContent = fmt(e.entregas); $('#m-pla').textContent = fmt(e.planes);
+  ULT = e; $('#o-rep-n').textContent = fmt(e.repetidas); $('#o-pap-n').textContent = fmt(e.papelera); $('#o-pap-mb').textContent = fmt(e.papeleraMB);
   const pct = e.total ? Math.min(100, e.hechas / e.total * 100) : (e.fase === 'Listo' ? 100 : 0);
   $('#i-bar').style.width = pct + '%';
   let t = e.fase || '';
@@ -297,7 +396,7 @@ function pintarGrid(contenedor, items, reset){
     t.addEventListener('touchstart', () => { movio = false; largo = setTimeout(() => { largo = null; modoSel = true; alternar(it.id, t); }, 450); }, {passive:true});
     t.addEventListener('touchmove', () => { movio = true; clearTimeout(largo); largo = null; }, {passive:true});
     t.addEventListener('touchend', () => { if (largo){ clearTimeout(largo); largo = null; } });
-    t.onclick = () => { if (modoSel) alternar(it.id, t); else abrirVisor(contenedor === $('#m-grid') ? M : B, it.id); };
+    t.onclick = () => { if (modoSel) alternar(it.id, t); else abrirVisor(contenedor.id === 'm-grid' ? M : (contenedor.id === 'o-grid' ? O : B), it.id); };
     contenedor.appendChild(t);
     if (obs) obs.observe(t); else pedirMini(t);
   });
@@ -305,24 +404,25 @@ function pintarGrid(contenedor, items, reset){
 function alternar(id, t){
   if (sel.has(id)) sel.delete(id); else sel.add(id);
   t.classList.toggle('sel', sel.has(id));
-  if (!sel.size && !$('#b-modo').dataset.on) modoSel = false;
+  if (!sel.size && !$$('#b-modo,#o-modo').some(b => b.dataset.on)) modoSel = false;
   barraSel();
 }
 function barraSel(){
   $('#selbar').classList.toggle('on', sel.size > 0);
+  $('#selbar').classList.toggle('pap', tab === 'ordenar' && !!O.pap);
   $('#sel-n').textContent = sel.size + (sel.size === 1 ? ' foto seleccionada' : ' fotos seleccionadas');
 }
-function limpiarSel(){ sel.clear(); modoSel = false; delete $('#b-modo').dataset.on; $('#b-modo').textContent = 'Seleccionar'; $$('.tile.sel').forEach(t => t.classList.remove('sel')); barraSel(); }
-$('#b-modo').onclick = () => {
-  const on = !$('#b-modo').dataset.on;
-  if (on){ $('#b-modo').dataset.on = '1'; $('#b-modo').textContent = 'Terminar selección'; modoSel = true; }
+function limpiarSel(){ sel.clear(); modoSel = false; $$('#b-modo,#o-modo').forEach(b => { delete b.dataset.on; b.textContent = 'Seleccionar'; }); $$('.tile.sel').forEach(t => t.classList.remove('sel')); barraSel(); }
+$$('#b-modo,#o-modo').forEach(btn => btn.onclick = () => {
+  const on = !btn.dataset.on;
+  if (on){ btn.dataset.on = '1'; btn.textContent = 'Terminar selección'; modoSel = true; }
   else limpiarSel();
-};
+});
 $('#sel-x').onclick = limpiarSel;
 $$('#selbar [data-m]').forEach(b => b.onclick = async () => {
   const ids = [...sel]; if (!ids.length) return;
   await G.marcar({ids, marca: b.dataset.m});
-  const lista = tab === 'marcadas' ? M : B;
+  const lista = listaActual();
   lista.items.forEach(it => { if (sel.has(it.id)) it.marca = b.dataset.m; });
   limpiarSel(); recargar(lista); refrescarEstado();
 });
@@ -408,6 +508,7 @@ $('#b-export').onclick = async () => {
 let visor = {L:null, i:0};
 async function abrirVisor(L, id){
   visor.L = L; visor.i = Math.max(0, L.items.findIndex(x => x.id === id));
+  $('#viewer').classList.toggle('pap', L === O && !!O.pap);
   $('#viewer').classList.add('on'); mostrar();
 }
 async function mostrar(){
@@ -434,6 +535,179 @@ $$('[data-vm]').forEach(b => b.onclick = async () => {
   const t = document.querySelector('.tile[data-id="' + it.id + '"]');
   if (t){ const tg = t.querySelector('.tag'); if (tg) tg.remove(); if (nueva) t.insertAdjacentHTML('beforeend', '<span class="tag ' + nueva + '">' + MARCA_TXT[nueva] + '</span>'); }
   mover(1);
+});
+
+
+/* ---------- Utilidades: avisos y cuadros de confirmación ---------- */
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let toastT = null;
+function aviso(t){ const e = $('#toast'); e.textContent = t; e.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => e.classList.remove('on'), 7000); }
+function modal(o){
+  return new Promise(res => {
+    $('#md-t').textContent = o.titulo; $('#md-p').innerHTML = o.texto || '';
+    const inp = $('#md-in'); inp.hidden = !o.input; inp.value = o.valor || ''; inp.placeholder = o.placeholder || '';
+    $('#md-dl').innerHTML = (o.sugerencias || []).map(x => '<option value="' + esc(x) + '">').join('');
+    $('#md-ok').textContent = o.ok || 'Aceptar'; $('#md-ok').className = 'btn' + (o.peligro ? ' danger' : '');
+    $('#md-no').textContent = o.cancelar || 'Cancelar';
+    $('#modal').classList.add('on'); if (o.input) setTimeout(() => inp.focus(), 60);
+    const fin = v => { $('#modal').classList.remove('on'); $('#md-ok').onclick = $('#md-no').onclick = null; res(v); };
+    $('#md-ok').onclick = () => fin(o.input ? (inp.value.trim() || null) : true);
+    $('#md-no').onclick = () => fin(null);
+  });
+}
+function listaActual(){ return tab === 'marcadas' ? M : (tab === 'ordenar' ? O : B); }
+
+/* ---------- Eliminar (a la papelera), carpetas y papelera ---------- */
+async function eliminarIds(ids){
+  const ok = await modal({titulo:'Eliminar fotos', texto:'Se mueven <b>' + fmt(ids.length) + '</b> fotos a la papelera de la app. Podés restaurarlas hasta que la vacíes.', ok:'Eliminar', peligro:true});
+  if (!ok) return false;
+  try { const r = await G.eliminar({ids}); aviso(fmt(r.movidas) + ' fotos a la papelera' + (r.fallas ? ' (' + r.fallas + ' no se pudieron mover)' : '') + '.'); return true; }
+  catch (e){ aviso(String(e && e.message || e)); return false; }
+}
+async function carpetaIds(ids){
+  let sug = []; try { sug = (await G.carpetas()).carpetas.map(c => c.nombre); } catch {}
+  const nombre = await modal({titulo:'Agrupar en una carpeta', texto:'Poné el nombre de la carpeta. Las <b>' + fmt(ids.length) + '</b> fotos se <b>mueven</b> a Imágenes / DOMino-Carpetas / nombre.', input:true, placeholder:'Nombre de la carpeta', sugerencias:sug, ok:'Mover'});
+  if (!nombre) return false;
+  try { const r = await G.carpeta({ids, nombre}); aviso(fmt(r.movidas) + ' fotos en «' + nombre + '»' + (r.fallas ? ' (' + r.fallas + ' no se pudieron mover)' : '') + '.'); return true; }
+  catch (e){ aviso(String(e && e.message || e)); return false; }
+}
+async function borrarParaSiempre(ids){
+  const todas = !ids;
+  const n = todas ? (ULT.papelera || 0) : ids.length;
+  const ok = await modal({titulo: todas ? 'Vaciar papelera' : 'Borrar para siempre', texto:'Se borran <b>para siempre</b> ' + fmt(n) + ' fotos del teléfono. <b>No se puede deshacer.</b>', ok:'Borrar para siempre', peligro:true});
+  if (!ok) return false;
+  try { const r = await G.vaciarPapelera(todas ? {} : {ids}); aviso(fmt(r.borradas) + ' fotos borradas (' + fmt(r.mb) + ' MB liberados).'); return true; }
+  catch (e){ aviso(String(e && e.message || e)); return false; }
+}
+$('#sel-borrar').onclick = async () => { const ids = [...sel]; if (!ids.length) return; if (await eliminarIds(ids)){ limpiarSel(); recargar(listaActual()); refrescarEstado(); } };
+$('#sel-carpeta').onclick = async () => { const ids = [...sel]; if (!ids.length) return; if (await carpetaIds(ids)){ limpiarSel(); recargar(listaActual()); refrescarEstado(); } };
+$('#sel-rest').onclick = async () => {
+  const ids = [...sel]; if (!ids.length) return;
+  try { const r = await G.restaurar({ids}); aviso(fmt(r.restauradas) + ' fotos restauradas' + (r.fallas ? ' (' + r.fallas + ' no se pudieron)' : '') + '.'); } catch (e){ aviso(String(e && e.message || e)); }
+  limpiarSel(); recargar(O); refrescarOrdenar();
+};
+$('#sel-def').onclick = async () => { const ids = [...sel]; if (!ids.length) return; if (await borrarParaSiempre(ids)){ limpiarSel(); recargar(O); refrescarOrdenar(); } };
+
+/* ---------- Pestaña Ordenar ---------- */
+const O = {items:[], total:0, offset:0, hecho:false, grid:'#o-grid', mas:'#o-mas', count:'#o-count', params:null, pap:false};
+async function refrescarOrdenar(){
+  await refrescarEstado();
+  try {
+    const r = await G.carpetas();
+    $('#o-carp').innerHTML = r.carpetas.length ? r.carpetas.map(x => '<button class="chip" data-carp="' + esc(x.nombre) + '">' + esc(x.nombre) + ' (' + fmt(x.cantidad) + ')</button>').join('') : '<span class="mut">Todavía no armaste carpetas.</span>';
+    $$('#o-carp [data-carp]').forEach(b => b.onclick = () => verO({grupos:[], carpeta:b.dataset.carp}, 'Carpeta: ' + b.dataset.carp, false));
+  } catch {}
+}
+async function verO(params, titulo, pap){
+  limpiarSel(); O.params = params; O.pap = !!pap;
+  $('#o-tit').textContent = titulo; $('#o-ops').hidden = false;
+  try { await consultar(O, true); } catch (e){ $('#o-count').textContent = 'Error: ' + (e && e.message || e); }
+  $('#o-tit').scrollIntoView({block:'start'});
+}
+$('#o-mas').onclick = () => consultar(O, false);
+$('#o-pap-ver').onclick = () => verO({grupos:[], papelera:true}, 'Papelera', true);
+$('#o-pap-rest').onclick = async () => {
+  if (!(ULT.papelera > 0)){ aviso('La papelera está vacía.'); return; }
+  const ok = await modal({titulo:'Restaurar todo', texto:'Las <b>' + fmt(ULT.papelera) + '</b> fotos de la papelera vuelven a su carpeta de origen.', ok:'Restaurar'});
+  if (!ok) return;
+  try { const r = await G.restaurar({todas:true}); aviso(fmt(r.restauradas) + ' fotos restauradas' + (r.fallas ? ' (' + r.fallas + ' no se pudieron)' : '') + '.'); } catch (e){ aviso(String(e && e.message || e)); }
+  await refrescarOrdenar(); if (O.pap) verO(O.params, 'Papelera', true);
+};
+$('#o-pap-vaciar').onclick = async () => {
+  if (!(ULT.papelera > 0)){ aviso('La papelera ya está vacía.'); return; }
+  if (await borrarParaSiempre(null)){ await refrescarOrdenar(); if (O.pap) verO(O.params, 'Papelera', true); }
+};
+
+/* ---------- Repetidas: grupos con un original y sus copias ---------- */
+const D = {off:0, total:0, copias:0, sin:0, desel:new Set(), cargando:false};
+function resumenDup(){
+  const n = Math.max(0, D.copias - D.desel.size);
+  $('#dup-res').textContent = fmt(D.total) + ' grupos · ' + fmt(n) + ' de ' + fmt(D.copias) + ' repetidas marcadas para eliminar' + (D.sin ? ' · ' + fmt(D.sin) + ' sin original localizado (no se tocan)' : '');
+  $('#dup-borrar').textContent = 'Eliminar ' + fmt(n) + ' repetidas (queda 1 original por grupo)';
+  $('#dup-borrar').disabled = n === 0;
+}
+function pintarGrupo(g){
+  const cont = document.createElement('div'); cont.className = 'grp';
+  const fila = document.createElement('div'); fila.className = 'fila';
+  const mk = (it, esOrig) => {
+    const t = document.createElement('div');
+    t.className = 'tile ' + (esOrig ? 'queda' : (D.desel.has(it.id) ? '' : 'borrar'));
+    t.dataset.id = it.id;
+    t.innerHTML = '<img alt="" decoding="async">' + (esOrig ? '<span class="badge">SE QUEDA</span>' : '<span class="ck">✕</span>') + '<span class="tag">' + esc(it.mb) + ' MB</span>';
+    if (!esOrig) t.onclick = () => {
+      if (D.desel.has(it.id)) D.desel.delete(it.id); else D.desel.add(it.id);
+      t.classList.toggle('borrar', !D.desel.has(it.id)); resumenDup();
+    };
+    fila.appendChild(t); if (obs) obs.observe(t); else pedirMini(t);
+  };
+  mk(g.orig, true); g.copias.forEach(c => mk(c, false));
+  cont.appendChild(fila);
+  const sm = document.createElement('small');
+  sm.textContent = 'Original: ' + g.orig.origen + ' · ' + g.orig.fecha + ' · ' + g.copias.length + (g.copias.length === 1 ? ' copia' : ' copias') + ' (' + [...new Set(g.copias.map(c => c.origen))].join(', ') + ')';
+  cont.appendChild(sm);
+  $('#dup-lista').appendChild(cont);
+}
+async function masDup(reset){
+  if (D.cargando) return; D.cargando = true;
+  try {
+    const r = await G.repetidas({offset: reset ? 0 : D.off, limite: 20});
+    const lista = $('#dup-lista');
+    if (reset){ D.off = 0; lista.innerHTML = ''; }
+    const viejo = $('#dup-mas'); if (viejo) viejo.remove();
+    D.total = r.totalGrupos; D.copias = r.totalCopias; D.sin = r.sinOriginal;
+    r.grupos.forEach(pintarGrupo); D.off += r.grupos.length;
+    if (!r.totalGrupos) lista.innerHTML = '<div class="empty">No hay repetidas con original para mostrar.' + (D.sin ? '<br>' + fmt(D.sin) + ' repetidas no tienen original localizado y no se tocan.' : '') + '</div>';
+    else if (D.off < D.total){
+      const b = document.createElement('button'); b.id = 'dup-mas'; b.className = 'btn sec block'; b.textContent = 'Ver más grupos (' + fmt(D.total - D.off) + ' restantes)';
+      b.onclick = () => masDup(false); lista.appendChild(b);
+    }
+    resumenDup();
+  } catch (e){ $('#dup-lista').innerHTML = '<div class="empty">No se pudieron armar los grupos: ' + esc(e && e.message || e) + '</div>'; }
+  D.cargando = false;
+}
+async function abrirDup(){ D.desel = new Set(); $('#dup').classList.add('on'); $('#dup-lista').innerHTML = '<div class="empty">Buscando repetidas…</div>'; await masDup(true); }
+$('#o-rep').onclick = abrirDup;
+$('#dup-x').onclick = () => { $('#dup').classList.remove('on'); refrescarOrdenar(); };
+$('#dup-todas').onclick = () => { D.desel.clear(); $$('#dup-lista .tile:not(.queda)').forEach(t => t.classList.add('borrar')); resumenDup(); };
+$('#dup-ninguna').onclick = async () => {
+  try { const r = await G.idsRepetidas(); r.ids.forEach(id => D.desel.add(id)); } catch {}
+  $$('#dup-lista .tile:not(.queda)').forEach(t => t.classList.remove('borrar')); resumenDup();
+};
+$('#dup-borrar').onclick = async () => {
+  let ids; try { ids = (await G.idsRepetidas()).ids.filter(id => !D.desel.has(id)); } catch (e){ aviso(String(e && e.message || e)); return; }
+  if (!ids.length) return;
+  const ok = await modal({titulo:'Eliminar repetidas', texto:'Se mueven <b>' + fmt(ids.length) + '</b> fotos repetidas a la papelera. De cada grupo <b>se queda una</b> como original. Podés restaurarlas hasta que vacíes la papelera.', ok:'Eliminar ' + fmt(ids.length), peligro:true});
+  if (!ok) return;
+  const btn = $('#dup-borrar'); btn.disabled = true;
+  let mov = 0, fall = 0, sinO = 0, mb = 0;
+  try {
+    for (let i = 0; i < ids.length; i += 150){
+      $('#dup-res').textContent = 'Eliminando… ' + fmt(Math.min(i + 150, ids.length)) + ' de ' + fmt(ids.length);
+      const r = await G.eliminar({ids: ids.slice(i, i + 150), dup:true});
+      mov += r.movidas; fall += r.fallas; sinO += r.sinOriginal; mb += r.mb || 0;
+    }
+  } catch (e){ aviso('Se cortó: ' + String(e && e.message || e)); }
+  aviso(fmt(mov) + ' repetidas a la papelera (' + fmt(mb) + ' MB)' + (fall ? ', ' + fall + ' no se pudieron mover' : '') + (sinO ? ', ' + sinO + ' se saltearon por falta de original' : '') + '.');
+  await abrirDup(); refrescarEstado();
+};
+
+/* ---------- Visor: carpeta, eliminar, restaurar ---------- */
+function quitarDelVisor(it){
+  const L = visor.L, k = L.items.findIndex(x => x.id === it.id);
+  if (k >= 0) L.items.splice(k, 1);
+  L.total = Math.max(0, L.total - 1); L.offset = L.items.length;
+  const t = document.querySelector('.tile[data-id="' + it.id + '"]'); if (t) t.remove();
+  $(L.count).textContent = fmt(L.total) + (L.total === 1 ? ' foto' : ' fotos');
+  if (!L.items.length){ $('#viewer').classList.remove('on'); refrescarEstado(); return; }
+  visor.i = Math.min(k < 0 ? visor.i : k, L.items.length - 1); mostrar();
+}
+$$('[data-vx]').forEach(b => b.onclick = async () => {
+  const it = visor.L.items[visor.i]; if (!it) return;
+  const a = b.dataset.vx;
+  if (a === 'carpeta'){ await carpetaIds([it.id]); }
+  else if (a === 'borrar'){ if (await eliminarIds([it.id])) quitarDelVisor(it); }
+  else if (a === 'rest'){ try { await G.restaurar({ids:[it.id]}); aviso('Foto restaurada.'); quitarDelVisor(it); } catch (e){ aviso(String(e && e.message || e)); } }
+  else if (a === 'def'){ if (await borrarParaSiempre([it.id])) quitarDelVisor(it); }
 });
 
 verPermiso(); refrescarEstado();

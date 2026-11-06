@@ -12,6 +12,13 @@ DOMino Galería es una app Android de The DOM Studio Web que busca fotos dentro 
 - Mantené apretada una foto (o usá **Seleccionar**) para elegir varias y marcarlas juntas.
 - Criterio de X5: **Entrega** = persona con llaves en la mano o persona junto a un auto o una moto (nunca vehículos solos ni fotos de stock). **Plan** = persona con la carpeta blanca de contrato con el logo de X5.
 
+## Ordenar (repetidas, papelera y carpetas)
+- **Fotos repetidas**: el botón muestra todos los grupos. Cada grupo tiene un original ("SE QUEDA") y sus copias, marcadas por defecto con ✕. Se puede tocar una copia para desmarcarla, marcar o desmarcar todas, y "Eliminar" mueve las marcadas a la papelera. Solo se elimina una repetida si su original sigue existiendo; las que no tienen original localizado no se tocan.
+- **Papelera**: Eliminar nunca borra de inmediato. Las fotos van a una papelera de la app (carpeta oculta `.DOMino-Papelera`) y se pueden restaurar a su lugar de origen. "Vaciar papelera" o "Borrar para siempre" las elimina de verdad y no se puede deshacer.
+- **Eliminar una foto**: desde el visor o seleccionando varias, botón Eliminar (va a la papelera).
+- **Carpetas**: seleccionás fotos, tocás Carpeta, escribís el nombre. Las fotos se mueven (no se copian) a Imágenes/DOMino-Carpetas/<nombre>. Las carpetas creadas aparecen en Ordenar.
+- Limitación: todavía no se puede cambiar cuál es el original de un grupo.
+
 ## Exportar
 "Copiar a carpeta y armar zip" copia las Entregas y los Planes a **Imágenes / X5-Historia** (subcarpetas Entregas y Planes, con la fecha al inicio del nombre), crea un `indice.csv` y un .zip en Imágenes. Los originales no se tocan.
 

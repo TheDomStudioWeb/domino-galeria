@@ -29,6 +29,10 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
@@ -40,6 +44,7 @@ import java.util.zip.ZipOutputStream;
 public class GaleriaPlugin extends Plugin {
 
     public static final String CARPETA_EXPORT = "X5-Historia";
+    public static final String CARPETA_GRUPOS = "DOMino-Carpetas";
 
     private SQLiteDatabase db() { return GaleriaDb.get(getContext()).getWritableDatabase(); }
 
@@ -116,14 +121,16 @@ public class GaleriaPlugin extends Plugin {
         o.put("error", IndexService.error);
         long t = IndexService.inicioAnalisis;
         o.put("segundos", IndexService.corriendo && t > 0 ? (System.currentTimeMillis() - t) / 1000 : 0);
-        o.put("registradas", contar("SELECT COUNT(*) FROM fotos"));
-        o.put("repetidas", contar("SELECT COUNT(*) FROM fotos WHERE dup=1"));
+        o.put("registradas", contar("SELECT COUNT(*) FROM fotos WHERE borrada=0"));
+        o.put("repetidas", contar("SELECT COUNT(*) FROM fotos WHERE dup=1 AND borrada=0"));
         o.put("analizadas", contar("SELECT COUNT(*) FROM fotos WHERE estado=1 AND dup=0"));
         o.put("pendientes", contar("SELECT COUNT(*) FROM fotos WHERE estado=0 AND dup=0"));
         o.put("errores", contar("SELECT COUNT(*) FROM fotos WHERE estado=2 AND dup=0"));
         o.put("entregas", contar("SELECT COUNT(*) FROM fotos WHERE marca='entrega'"));
         o.put("planes", contar("SELECT COUNT(*) FROM fotos WHERE marca='plan'"));
-        o.put("descartadas", contar("SELECT COUNT(*) FROM fotos WHERE marca='descartar'"));
+        o.put("descartadas", contar("SELECT COUNT(*) FROM fotos WHERE marca='descartar' AND borrada=0"));
+        o.put("papelera", contar("SELECT COUNT(*) FROM fotos WHERE borrada=1"));
+        o.put("papeleraMB", contar("SELECT COALESCE(SUM(size)/1048576,0) FROM fotos WHERE borrada=1"));
         call.resolve(o);
     }
 
@@ -134,8 +141,15 @@ public class GaleriaPlugin extends Plugin {
     @PluginMethod
     public void buscar(PluginCall call) {
         try {
-            StringBuilder w = new StringBuilder("estado=1 AND dup=0");
+            StringBuilder w = new StringBuilder();
             List<String> args = new ArrayList<>();
+            String carpeta = call.getString("carpeta", "");
+            if (call.getBoolean("papelera", false)) w.append("borrada=1");
+            else if (!carpeta.isEmpty()) {
+                String pre = new File(gruposDir(), limpioNombre(carpeta)).getAbsolutePath() + "/";
+                w.append("borrada=0 AND substr(ruta,1,").append(pre.length()).append(")=?");
+                args.add(pre);
+            } else w.append("estado=1 AND dup=0 AND borrada=0");
 
             JSArray grupos = call.getArray("grupos");
             if (grupos != null) {
@@ -327,5 +341,392 @@ public class GaleriaPlugin extends Plugin {
         } catch (Throwable e) {
             call.reject("No se pudo exportar: " + e.getMessage());
         }
+    }
+
+    /* ================= Repetidas, papelera y carpetas ================= */
+
+    private File gruposDir() { return new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), CARPETA_GRUPOS); }
+
+    /** Carpeta oculta (sin .nomedia no la mostraría la galería, con él queda fuera de ella) donde van las fotos eliminadas. */
+    private File papeleraDir() {
+        File d = new File(Environment.getExternalStorageDirectory(), ".DOMino-Papelera");
+        if (!d.exists()) d.mkdirs();
+        try { new File(d, ".nomedia").createNewFile(); } catch (Throwable ignored) { }
+        return d;
+    }
+
+    private static String limpioNombre(String n) {
+        String s = n == null ? "" : n.replaceAll("[\\\\/:*?\"<>|\\p{Cntrl}]", " ").replaceAll("\\s+", " ").trim();
+        while (s.startsWith(".")) s = s.substring(1).trim();
+        return s.length() > 60 ? s.substring(0, 60).trim() : s;
+    }
+
+    /** Mueve un archivo: renombra y, si está en otro volumen, copia, verifica el tamaño y borra el origen. */
+    private static boolean moverArchivo(File src, File dst) {
+        if (src.renameTo(dst)) return true;
+        try (InputStream in = new FileInputStream(src); OutputStream out = new FileOutputStream(dst)) {
+            byte[] b = new byte[64 * 1024]; int n;
+            while ((n = in.read(b)) > 0) out.write(b, 0, n);
+            out.flush();
+        } catch (Throwable e) { dst.delete(); return false; }
+        if (dst.length() != src.length()) { dst.delete(); return false; }
+        dst.setLastModified(src.lastModified());
+        if (!src.delete()) { dst.delete(); return false; }
+        return true;
+    }
+
+    private void escanear(List<String> rutas) {
+        if (rutas.isEmpty()) return;
+        try { MediaScannerConnection.scanFile(getContext(), rutas.toArray(new String[0]), null, null); } catch (Throwable ignored) { }
+    }
+
+    private static class Fila { long id, orig, fecha, size; String nombre = "", origen = ""; }
+
+    private final Map<Long, List<Fila>> gruposRep = new LinkedHashMap<>();
+    private final Map<Long, Fila> raicesRep = new HashMap<>();
+
+    /** A las repetidas viejas (marcadas antes de guardar el vínculo) les busca la foto que se queda como original. */
+    private void enlazar() {
+        SQLiteDatabase d = db();
+        List<long[]> pend = new ArrayList<>();      // id, dh, tieneDh, w, h
+        List<String> hashes = new ArrayList<>();
+        Cursor c = d.rawQuery("SELECT id, dh, hash, w, h FROM fotos WHERE dup=1 AND borrada=0 AND orig IS NULL", null);
+        while (c.moveToNext()) {
+            pend.add(new long[]{c.getLong(0), c.isNull(1) ? 0 : c.getLong(1), c.isNull(1) ? 0 : 1, c.getLong(3), c.getLong(4)});
+            hashes.add(c.getString(2));
+        }
+        c.close();
+        if (pend.isEmpty()) return;
+        Map<String, Long> porHash = new HashMap<>();
+        List<long[]> raices = new ArrayList<>();    // id, dh, w, h
+        c = d.rawQuery("SELECT id, hash, dh, w, h FROM fotos WHERE dup=0 AND borrada=0 AND (hash IS NOT NULL OR dh IS NOT NULL)", null);
+        while (c.moveToNext()) {
+            if (!c.isNull(1) && !porHash.containsKey(c.getString(1))) porHash.put(c.getString(1), c.getLong(0));
+            if (!c.isNull(2)) raices.add(new long[]{c.getLong(0), c.getLong(2), c.getLong(3), c.getLong(4)});
+        }
+        c.close();
+        c = d.rawQuery("SELECT id, hash FROM fotos WHERE dup=1 AND borrada=0 AND orig IS NOT NULL AND hash IS NOT NULL", null);
+        while (c.moveToNext()) if (!porHash.containsKey(c.getString(1))) porHash.put(c.getString(1), c.getLong(0));
+        c.close();
+        Map<Integer, List<Integer>> cubos = new HashMap<>();
+        for (int i = 0; i < raices.size(); i++) {
+            long dh = raices.get(i)[1];
+            for (int b = 0; b < 4; b++) {
+                int clave = (b << 16) | (int) ((dh >>> (16 * b)) & 0xFFFF);
+                List<Integer> l = cubos.get(clave);
+                if (l == null) { l = new ArrayList<>(); cubos.put(clave, l); }
+                l.add(i);
+            }
+        }
+        d.beginTransaction();
+        try {
+            ContentValues cv = new ContentValues();
+            for (int i = 0; i < pend.size(); i++) {
+                long[] p = pend.get(i);
+                Long o = hashes.get(i) != null ? porHash.get(hashes.get(i)) : null;
+                if (o != null && o == p[0]) o = null;
+                if (o == null && p[2] == 1) {
+                    long mejor = -1; int dmin = 9;
+                    double ap = p[4] == 0 ? 1 : (double) p[3] / p[4];
+                    for (int b = 0; b < 4; b++) {
+                        List<Integer> l = cubos.get((b << 16) | (int) ((p[1] >>> (16 * b)) & 0xFFFF));
+                        if (l == null) continue;
+                        for (int k = 0; k < l.size() && k < 400; k++) {
+                            long[] r = raices.get(l.get(k));
+                            int dist = Long.bitCount(p[1] ^ r[1]);
+                            if (dist >= dmin) continue;
+                            double ar = r[3] == 0 ? 1 : (double) r[2] / r[3];
+                            if (Math.abs(ap - ar) / Math.max(ap, ar) > 0.04) continue;
+                            dmin = dist; mejor = r[0];
+                        }
+                    }
+                    if (mejor >= 0) o = mejor;
+                }
+                if (o != null) { cv.clear(); cv.put("orig", o); d.update("fotos", cv, "id=?", new String[]{String.valueOf(p[0])}); }
+            }
+            d.setTransactionSuccessful();
+        } finally { d.endTransaction(); }
+    }
+
+    /** Arma los grupos: cada original con sus copias. Devuelve cuántas repetidas no tienen original localizado (esas no se tocan). */
+    private int armarGrupos() {
+        enlazar();
+        SQLiteDatabase d = db();
+        gruposRep.clear(); raicesRep.clear();
+        Map<Long, Fila> copias = new LinkedHashMap<>();
+        Cursor c = d.rawQuery("SELECT id, orig, nombre, fecha, origen, size FROM fotos WHERE dup=1 AND borrada=0 AND orig IS NOT NULL ORDER BY fecha DESC", null);
+        while (c.moveToNext()) {
+            Fila f = new Fila();
+            f.id = c.getLong(0); f.orig = c.getLong(1); f.nombre = c.getString(2) == null ? "" : c.getString(2);
+            f.fecha = c.getLong(3); f.origen = c.getString(4) == null ? "" : c.getString(4); f.size = c.getLong(5);
+            copias.put(f.id, f);
+        }
+        c.close();
+        int sin = contar("SELECT COUNT(*) FROM fotos WHERE dup=1 AND borrada=0 AND orig IS NULL");
+        Map<Long, List<Fila>> tmp = new LinkedHashMap<>();
+        for (Fila f : copias.values()) {
+            long r = f.orig; int pasos = 0;
+            while (copias.containsKey(r) && pasos++ < 12) r = copias.get(r).orig;
+            List<Fila> l = tmp.get(r);
+            if (l == null) { l = new ArrayList<>(); tmp.put(r, l); }
+            l.add(f);
+        }
+        for (Map.Entry<Long, List<Fila>> e : tmp.entrySet()) {
+            Cursor q = d.rawQuery("SELECT id, nombre, fecha, origen, size FROM fotos WHERE id=? AND dup=0 AND borrada=0", new String[]{String.valueOf(e.getKey())});
+            if (q.moveToFirst()) {
+                Fila r = new Fila();
+                r.id = q.getLong(0); r.nombre = q.getString(1) == null ? "" : q.getString(1); r.fecha = q.getLong(2);
+                r.origen = q.getString(3) == null ? "" : q.getString(3); r.size = q.getLong(4);
+                raicesRep.put(r.id, r);
+                gruposRep.put(r.id, e.getValue());
+            } else sin += e.getValue().size();
+            q.close();
+        }
+        return sin;
+    }
+
+    private static JSObject datosFila(Fila f, SimpleDateFormat fmt) {
+        JSObject o = new JSObject();
+        o.put("id", f.id); o.put("nombre", f.nombre); o.put("origen", f.origen);
+        o.put("fecha", fmt.format(new Date(f.fecha))); o.put("mb", Math.round(f.size / 104857.6) / 10.0);
+        return o;
+    }
+
+    @PluginMethod
+    public void repetidas(PluginCall call) {
+        try {
+            int sin = armarGrupos();
+            SimpleDateFormat fmt = new SimpleDateFormat("yyyy-MM-dd", Locale.US);
+            List<Long> raices = new ArrayList<>(gruposRep.keySet());
+            int total = 0;
+            for (List<Fila> l : gruposRep.values()) total += l.size();
+            int off = Math.max(0, call.getInt("offset", 0)), lim = Math.max(1, Math.min(60, call.getInt("limite", 20)));
+            JSArray arr = new JSArray();
+            for (int i = off; i < raices.size() && i < off + lim; i++) {
+                long r = raices.get(i);
+                JSObject g = new JSObject();
+                g.put("orig", datosFila(raicesRep.get(r), fmt));
+                JSArray cs = new JSArray();
+                for (Fila f : gruposRep.get(r)) cs.put(datosFila(f, fmt));
+                g.put("copias", cs);
+                arr.put(g);
+            }
+            JSObject res = new JSObject();
+            res.put("totalGrupos", raices.size()); res.put("totalCopias", total); res.put("sinOriginal", sin); res.put("grupos", arr);
+            call.resolve(res);
+        } catch (Throwable e) {
+            call.reject("No se pudieron armar los grupos: " + e.getMessage());
+        }
+    }
+
+    @PluginMethod
+    public void idsRepetidas(PluginCall call) {
+        try {
+            armarGrupos();
+            JSArray ids = new JSArray();
+            for (List<Fila> l : gruposRep.values()) for (Fila f : l) ids.put(f.id);
+            JSObject res = new JSObject();
+            res.put("ids", ids);
+            call.resolve(res);
+        } catch (Throwable e) {
+            call.reject("No se pudo leer la lista: " + e.getMessage());
+        }
+    }
+
+    /** Una repetida solo se elimina si su original sigue existiendo en el teléfono. */
+    private boolean originalVigente(long id) {
+        SQLiteDatabase d = db();
+        for (int paso = 0; paso < 12; paso++) {
+            Cursor c = d.rawQuery("SELECT orig FROM fotos WHERE id=?", new String[]{String.valueOf(id)});
+            boolean tiene = c.moveToFirst() && !c.isNull(0);
+            long o = tiene ? c.getLong(0) : -1;
+            c.close();
+            if (!tiene) return false;
+            Cursor q = d.rawQuery("SELECT dup, ruta, borrada FROM fotos WHERE id=?", new String[]{String.valueOf(o)});
+            if (!q.moveToFirst()) { q.close(); return false; }
+            int dup = q.getInt(0); String ruta = q.getString(1); int bor = q.getInt(2);
+            q.close();
+            if (bor != 0) return false;
+            if (dup == 0) return ruta != null && new File(ruta).exists();
+            id = o;
+        }
+        return false;
+    }
+
+    /** Eliminar = mover a la papelera de la app (se puede restaurar hasta que se vacíe). */
+    @PluginMethod
+    public void eliminar(PluginCall call) {
+        if (!tienePermiso()) { call.reject("SIN_PERMISO"); return; }
+        JSArray ids = call.getArray("ids");
+        boolean soloRepetidas = call.getBoolean("dup", false);
+        int movidas = 0, fallas = 0, sinOriginal = 0; long bytes = 0;
+        List<String> viejas = new ArrayList<>();
+        SQLiteDatabase d = db();
+        File pap = papeleraDir();
+        d.beginTransaction();
+        try {
+            for (int i = 0; ids != null && i < ids.length(); i++) {
+                long id = ids.optLong(i);
+                Cursor c = d.rawQuery("SELECT ruta, nombre, size, dup FROM fotos WHERE id=? AND borrada=0", new String[]{String.valueOf(id)});
+                if (!c.moveToFirst()) { c.close(); continue; }
+                String ruta = c.getString(0), nombre = c.getString(1); long size = c.getLong(2); int dup = c.getInt(3);
+                c.close();
+                if (soloRepetidas && (dup != 1 || !originalVigente(id))) { sinOriginal++; continue; }
+                File src = new File(ruta);
+                if (!src.exists()) { d.delete("fotos", "id=?", new String[]{String.valueOf(id)}); continue; }
+                File dst = new File(pap, id + "_" + (nombre == null ? src.getName() : nombre));
+                if (!moverArchivo(src, dst)) { fallas++; continue; }
+                ContentValues cv = new ContentValues();
+                cv.put("ruta", dst.getAbsolutePath()); cv.put("ruta_orig", ruta); cv.put("borrada", 1);
+                d.update("fotos", cv, "id=?", new String[]{String.valueOf(id)});
+                viejas.add(ruta); movidas++; bytes += size;
+            }
+            d.setTransactionSuccessful();
+        } finally { d.endTransaction(); }
+        escanear(viejas);
+        JSObject res = new JSObject();
+        res.put("movidas", movidas); res.put("fallas", fallas); res.put("sinOriginal", sinOriginal); res.put("mb", bytes / 1048576);
+        call.resolve(res);
+    }
+
+    @PluginMethod
+    public void restaurar(PluginCall call) {
+        if (!tienePermiso()) { call.reject("SIN_PERMISO"); return; }
+        JSArray ids = call.getArray("ids");
+        boolean todas = call.getBoolean("todas", false);
+        SQLiteDatabase d = db();
+        List<long[]> lista = new ArrayList<>();
+        List<String[]> rutas = new ArrayList<>();
+        Cursor c = d.rawQuery("SELECT id, ruta, ruta_orig FROM fotos WHERE borrada=1", null);
+        java.util.Set<Long> pedidas = new java.util.HashSet<>();
+        for (int i = 0; ids != null && i < ids.length(); i++) pedidas.add(ids.optLong(i));
+        while (c.moveToNext()) {
+            if (!todas && !pedidas.contains(c.getLong(0))) continue;
+            lista.add(new long[]{c.getLong(0)}); rutas.add(new String[]{c.getString(1), c.getString(2)});
+        }
+        c.close();
+        int ok = 0, fallas = 0;
+        List<String> nuevas = new ArrayList<>();
+        d.beginTransaction();
+        try {
+            for (int i = 0; i < lista.size(); i++) {
+                File src = new File(rutas.get(i)[0]);
+                String origen = rutas.get(i)[1];
+                if (origen == null || !src.exists()) { fallas++; continue; }
+                File dst = new File(origen);
+                File padre = dst.getParentFile();
+                if (padre != null && !padre.exists()) padre.mkdirs();
+                if (dst.exists()) dst = libre(padre, dst.getName());
+                if (!moverArchivo(src, dst)) { fallas++; continue; }
+                ContentValues cv = new ContentValues();
+                cv.put("ruta", dst.getAbsolutePath()); cv.putNull("ruta_orig"); cv.put("borrada", 0);
+                d.update("fotos", cv, "id=?", new String[]{String.valueOf(lista.get(i)[0])});
+                nuevas.add(dst.getAbsolutePath()); ok++;
+            }
+            d.setTransactionSuccessful();
+        } finally { d.endTransaction(); }
+        escanear(nuevas);
+        JSObject res = new JSObject();
+        res.put("restauradas", ok); res.put("fallas", fallas);
+        call.resolve(res);
+    }
+
+    /** Borrado definitivo: solo de lo que ya está en la papelera. */
+    @PluginMethod
+    public void vaciarPapelera(PluginCall call) {
+        JSArray ids = call.getArray("ids");
+        java.util.Set<Long> pedidas = new java.util.HashSet<>();
+        for (int i = 0; ids != null && i < ids.length(); i++) pedidas.add(ids.optLong(i));
+        SQLiteDatabase d = db();
+        List<long[]> lista = new ArrayList<>();
+        List<String> rutas = new ArrayList<>();
+        Cursor c = d.rawQuery("SELECT id, ruta, size FROM fotos WHERE borrada=1", null);
+        while (c.moveToNext()) {
+            if (ids != null && !pedidas.contains(c.getLong(0))) continue;
+            lista.add(new long[]{c.getLong(0), c.getLong(2)}); rutas.add(c.getString(1));
+        }
+        c.close();
+        int borradas = 0; long bytes = 0;
+        d.beginTransaction();
+        try {
+            for (int i = 0; i < lista.size(); i++) {
+                File f = new File(rutas.get(i));
+                if (f.exists() && !f.delete()) continue;
+                d.delete("fotos", "id=?", new String[]{String.valueOf(lista.get(i)[0])});
+                borradas++; bytes += lista.get(i)[1];
+            }
+            d.setTransactionSuccessful();
+        } finally { d.endTransaction(); }
+        JSObject res = new JSObject();
+        res.put("borradas", borradas); res.put("mb", bytes / 1048576);
+        call.resolve(res);
+    }
+
+    /* ---------------- Carpetas propias: Imágenes / DOMino-Carpetas / <nombre> ---------------- */
+
+    @PluginMethod
+    public void carpeta(PluginCall call) {
+        if (!tienePermiso()) { call.reject("SIN_PERMISO"); return; }
+        String nombre = limpioNombre(call.getString("nombre", ""));
+        JSArray ids = call.getArray("ids");
+        if (nombre.isEmpty()) { call.reject("Escribí un nombre para la carpeta."); return; }
+        if (ids == null || ids.length() == 0) { call.reject("No hay fotos seleccionadas."); return; }
+        File dir = new File(gruposDir(), nombre);
+        if (!dir.exists() && !dir.mkdirs()) { call.reject("No se pudo crear la carpeta."); return; }
+        SQLiteDatabase d = db();
+        int movidas = 0, fallas = 0;
+        List<String> rutas = new ArrayList<>();
+        d.beginTransaction();
+        try {
+            for (int i = 0; i < ids.length(); i++) {
+                long id = ids.optLong(i);
+                Cursor c = d.rawQuery("SELECT ruta, nombre FROM fotos WHERE id=? AND borrada=0", new String[]{String.valueOf(id)});
+                if (!c.moveToFirst()) { c.close(); continue; }
+                String ruta = c.getString(0), nom = c.getString(1);
+                c.close();
+                File src = new File(ruta);
+                if (!src.exists()) { fallas++; continue; }
+                if (src.getParentFile() != null && src.getParentFile().equals(dir)) { movidas++; continue; }
+                File dst = libre(dir, nom == null ? src.getName() : nom);
+                if (!moverArchivo(src, dst)) { fallas++; continue; }
+                ContentValues cv = new ContentValues();
+                cv.put("ruta", dst.getAbsolutePath()); cv.put("nombre", dst.getName()); cv.put("origen", CARPETA_GRUPOS + "/" + nombre);
+                d.update("fotos", cv, "id=?", new String[]{String.valueOf(id)});
+                rutas.add(ruta); rutas.add(dst.getAbsolutePath()); movidas++;
+            }
+            d.setTransactionSuccessful();
+        } finally { d.endTransaction(); }
+        escanear(rutas);
+        JSObject res = new JSObject();
+        res.put("movidas", movidas); res.put("fallas", fallas); res.put("carpeta", dir.getAbsolutePath());
+        call.resolve(res);
+    }
+
+    @PluginMethod
+    public void carpetas(PluginCall call) {
+        Map<String, Integer> cuenta = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        File base = gruposDir();
+        File[] hijos = base.listFiles();
+        if (hijos != null) for (File f : hijos) if (f.isDirectory() && !f.getName().startsWith(".")) cuenta.put(f.getName(), 0);
+        String pre = base.getAbsolutePath() + "/";
+        Cursor c = db().rawQuery("SELECT ruta FROM fotos WHERE borrada=0 AND substr(ruta,1," + pre.length() + ")=?", new String[]{pre});
+        while (c.moveToNext()) {
+            String resto = c.getString(0).substring(pre.length());
+            int k = resto.indexOf('/');
+            if (k <= 0) continue;
+            String n = resto.substring(0, k);
+            Integer v = cuenta.get(n);
+            cuenta.put(n, v == null ? 1 : v + 1);
+        }
+        c.close();
+        JSArray arr = new JSArray();
+        for (Map.Entry<String, Integer> e : cuenta.entrySet()) {
+            JSObject o = new JSObject();
+            o.put("nombre", e.getKey()); o.put("cantidad", e.getValue());
+            arr.put(o);
+        }
+        JSObject res = new JSObject();
+        res.put("carpetas", arr); res.put("ruta", base.getAbsolutePath());
+        call.resolve(res);
     }
 }

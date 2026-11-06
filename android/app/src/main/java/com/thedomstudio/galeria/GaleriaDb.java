@@ -14,7 +14,7 @@ public class GaleriaDb extends SQLiteOpenHelper {
         return inst;
     }
 
-    private GaleriaDb(Context c) { super(c, "galeria.db", null, 1); }
+    private GaleriaDb(Context c) { super(c, "galeria.db", null, 2); }
 
     @Override
     public void onCreate(SQLiteDatabase db) {
@@ -27,13 +27,24 @@ public class GaleriaDb extends SQLiteOpenHelper {
             + "dup INTEGER DEFAULT 0,"         // 1 = repetida de otra (no se muestra)
             + "caras INTEGER DEFAULT 0,"
             + "etiquetas TEXT DEFAULT '', texto TEXT DEFAULT '', textoc TEXT DEFAULT '',"
-            + "marca TEXT)");                  // entrega | plan | descartar | NULL
+            + "marca TEXT,"                    // entrega | plan | descartar | NULL
+            + "orig INTEGER,"                  // si es repetida: id de la foto que se queda como original
+            + "borrada INTEGER DEFAULT 0,"     // 1 = está en la papelera de la app
+            + "ruta_orig TEXT)");              // de dónde vino, para restaurarla
         db.execSQL("CREATE INDEX i_estado ON fotos(estado, dup)");
         db.execSQL("CREATE INDEX i_marca ON fotos(marca)");
         db.execSQL("CREATE INDEX i_fecha ON fotos(fecha)");
         db.execSQL("CREATE INDEX i_size ON fotos(size)");
+        db.execSQL("CREATE INDEX i_borrada ON fotos(borrada)");
     }
 
     @Override
-    public void onUpgrade(SQLiteDatabase db, int o, int n) { }
+    public void onUpgrade(SQLiteDatabase db, int o, int n) {
+        if (o < 2) {
+            db.execSQL("ALTER TABLE fotos ADD COLUMN orig INTEGER");
+            db.execSQL("ALTER TABLE fotos ADD COLUMN borrada INTEGER DEFAULT 0");
+            db.execSQL("ALTER TABLE fotos ADD COLUMN ruta_orig TEXT");
+            db.execSQL("CREATE INDEX IF NOT EXISTS i_borrada ON fotos(borrada)");
+        }
+    }
 }

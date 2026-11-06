@@ -214,7 +214,7 @@ public class IndexService extends Service {
                 db.insertWithOnConflict("fotos", null, cv, SQLiteDatabase.CONFLICT_IGNORE);
             }
             // fotos que ya no están en el teléfono
-            for (String r : conocidas) if (!actuales.contains(r)) db.delete("fotos", "ruta=?", new String[]{r});
+            for (String r : conocidas) if (!actuales.contains(r)) db.delete("fotos", "ruta=? AND borrada=0", new String[]{r});
             db.setTransactionSuccessful();
         } finally { db.endTransaction(); }
     }
@@ -243,7 +243,7 @@ public class IndexService extends Service {
             Cursor q = db.rawQuery("SELECT id, ruta, hash, mod FROM fotos WHERE dup=0 AND size=? ORDER BY mod", new String[]{String.valueOf(t)});
             while (q.moveToNext()) { ids.add(new long[]{q.getLong(0)}); rutas.add(q.getString(1)); hashes.add(q.getString(2)); }
             q.close();
-            Map<String, Boolean> vistos = new HashMap<>();
+            Map<String, Long> vistos = new HashMap<>();
             for (int i = 0; i < ids.size(); i++) {
                 String h = hashes.get(i);
                 if (h == null) {
@@ -252,9 +252,9 @@ public class IndexService extends Service {
                     db.update("fotos", cv, "id=?", new String[]{String.valueOf(ids.get(i)[0])});
                 }
                 if (vistos.containsKey(h)) {
-                    ContentValues cv = new ContentValues(); cv.put("dup", 1);
+                    ContentValues cv = new ContentValues(); cv.put("dup", 1); cv.put("orig", vistos.get(h));
                     db.update("fotos", cv, "id=?", new String[]{String.valueOf(ids.get(i)[0])});
-                } else vistos.put(h, true);
+                } else vistos.put(h, ids.get(i)[0]);
             }
         }
     }
@@ -341,6 +341,7 @@ public class IndexService extends Service {
             }
         }
         boolean[] dup = new boolean[n];
+        int[] quien = new int[n];
         for (List<Integer> l : cubos.values()) {
             int m = Math.min(l.size(), 300);
             for (int a = 0; a < m; a++) {
@@ -353,14 +354,17 @@ public class IndexService extends Service {
                     if (Long.bitCount(x[1] ^ y[1]) > 4) continue;
                     double ax = x[4] == 0 ? 1 : (double) x[3] / x[4], ay = y[4] == 0 ? 1 : (double) y[3] / y[4];
                     if (Math.abs(ax - ay) / Math.max(ax, ay) > 0.04) continue;
-                    if (x[2] >= y[2]) dup[j] = true; else dup[i] = true;      // queda la más pesada
+                    if (x[2] >= y[2]) { dup[j] = true; quien[j] = i; } else { dup[i] = true; quien[i] = j; }      // queda la más pesada
                 }
             }
         }
         db.beginTransaction();
         try {
-            ContentValues cv = new ContentValues(); cv.put("dup", 1);
-            for (int i = 0; i < n; i++) if (dup[i]) db.update("fotos", cv, "id=?", new String[]{String.valueOf(datos.get(i)[0])});
+            ContentValues cv = new ContentValues();
+            for (int i = 0; i < n; i++) if (dup[i]) {
+                cv.clear(); cv.put("dup", 1); cv.put("orig", datos.get(quien[i])[0]);
+                db.update("fotos", cv, "id=?", new String[]{String.valueOf(datos.get(i)[0])});
+            }
             db.setTransactionSuccessful();
         } finally { db.endTransaction(); }
     }
