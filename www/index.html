@@ -413,6 +413,26 @@ function barraSel(){
   $('#sel-n').textContent = sel.size + (sel.size === 1 ? ' foto seleccionada' : ' fotos seleccionadas');
 }
 function limpiarSel(){ sel.clear(); modoSel = false; $$('#b-modo,#o-modo').forEach(b => { delete b.dataset.on; b.textContent = 'Seleccionar'; }); $$('.tile.sel').forEach(t => t.classList.remove('sel')); barraSel(); }
+
+/* Actualiza la lista en el lugar (sin recargar): se mantiene lo que ya cargaste y el scroll */
+function quitarLocal(L, ids){
+  const set = new Set(ids);
+  L.items = L.items.filter(it => !set.has(it.id));
+  L.total = Math.max(0, L.total - set.size); L.offset = L.items.length;
+  set.forEach(id => { const t = $(L.grid).querySelector('.tile[data-id="' + id + '"]'); if (t) t.remove(); });
+  $(L.count).textContent = fmt(L.total) + (L.total === 1 ? ' foto' : ' fotos');
+  $(L.mas).hidden = L.items.length >= L.total;
+}
+function marcarLocal(L, ids, marca){
+  const set = new Set(ids);
+  L.items.forEach(it => { if (set.has(it.id)) it.marca = marca; });
+  set.forEach(id => {
+    const t = $(L.grid).querySelector('.tile[data-id="' + id + '"]'); if (!t) return;
+    const ant = t.querySelector('.tag.entrega, .tag.plan, .tag.descartar'); if (ant) ant.remove();
+    const g = document.createElement('span'); g.className = 'tag ' + marca; g.textContent = MARCA_TXT[marca]; t.appendChild(g);
+  });
+  if (L === M && L.marca && L.marca !== marca) quitarLocal(L, ids.filter(id => L.items.some(it => it.id === id)));
+}
 $$('#b-modo,#o-modo').forEach(btn => btn.onclick = () => {
   const on = !btn.dataset.on;
   if (on){ btn.dataset.on = '1'; btn.textContent = 'Terminar selección'; modoSel = true; }
@@ -423,8 +443,8 @@ $$('#selbar [data-m]').forEach(b => b.onclick = async () => {
   const ids = [...sel]; if (!ids.length) return;
   await G.marcar({ids, marca: b.dataset.m});
   const lista = listaActual();
-  lista.items.forEach(it => { if (sel.has(it.id)) it.marca = b.dataset.m; });
-  limpiarSel(); recargar(lista); refrescarEstado();
+  marcarLocal(lista, ids, b.dataset.m);
+  limpiarSel(); refrescarEstado();
 });
 
 /* ---------- Buscar ---------- */
@@ -579,14 +599,14 @@ async function borrarParaSiempre(ids){
   try { const r = await G.vaciarPapelera(todas ? {} : {ids}); aviso(fmt(r.borradas) + ' fotos borradas (' + fmt(r.mb) + ' MB liberados).'); return true; }
   catch (e){ aviso(String(e && e.message || e)); return false; }
 }
-$('#sel-borrar').onclick = async () => { const ids = [...sel]; if (!ids.length) return; if (await eliminarIds(ids)){ limpiarSel(); recargar(listaActual()); refrescarEstado(); } };
-$('#sel-carpeta').onclick = async () => { const ids = [...sel]; if (!ids.length) return; if (await carpetaIds(ids)){ limpiarSel(); recargar(listaActual()); refrescarEstado(); } };
+$('#sel-borrar').onclick = async () => { const ids = [...sel]; if (!ids.length) return; if (await eliminarIds(ids)){ quitarLocal(listaActual(), ids); limpiarSel(); refrescarEstado(); } };
+$('#sel-carpeta').onclick = async () => { const ids = [...sel]; if (!ids.length) return; if (await carpetaIds(ids)){ quitarLocal(listaActual(), ids); limpiarSel(); refrescarEstado(); } };
 $('#sel-rest').onclick = async () => {
   const ids = [...sel]; if (!ids.length) return;
   try { const r = await G.restaurar({ids}); aviso(fmt(r.restauradas) + ' fotos restauradas' + (r.fallas ? ' (' + r.fallas + ' no se pudieron)' : '') + '.'); } catch (e){ aviso(String(e && e.message || e)); }
-  limpiarSel(); recargar(O); refrescarOrdenar();
+  quitarLocal(O, ids); limpiarSel(); refrescarOrdenar();
 };
-$('#sel-def').onclick = async () => { const ids = [...sel]; if (!ids.length) return; if (await borrarParaSiempre(ids)){ limpiarSel(); recargar(O); refrescarOrdenar(); } };
+$('#sel-def').onclick = async () => { const ids = [...sel]; if (!ids.length) return; if (await borrarParaSiempre(ids)){ quitarLocal(O, ids); limpiarSel(); refrescarOrdenar(); } };
 
 /* ---------- Pestaña Ordenar ---------- */
 const O = {items:[], total:0, offset:0, hecho:false, grid:'#o-grid', mas:'#o-mas', count:'#o-count', params:null, pap:false};
@@ -704,7 +724,7 @@ function quitarDelVisor(it){
 $$('[data-vx]').forEach(b => b.onclick = async () => {
   const it = visor.L.items[visor.i]; if (!it) return;
   const a = b.dataset.vx;
-  if (a === 'carpeta'){ await carpetaIds([it.id]); }
+  if (a === 'carpeta'){ if (await carpetaIds([it.id])) quitarDelVisor(it); }
   else if (a === 'borrar'){ if (await eliminarIds([it.id])) quitarDelVisor(it); }
   else if (a === 'rest'){ try { await G.restaurar({ids:[it.id]}); aviso('Foto restaurada.'); quitarDelVisor(it); } catch (e){ aviso(String(e && e.message || e)); } }
   else if (a === 'def'){ if (await borrarParaSiempre([it.id])) quitarDelVisor(it); }
