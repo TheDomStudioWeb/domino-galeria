@@ -27,3 +27,16 @@ DOMino Galería es una app Android de The DOM Studio Web que busca fotos dentro 
 - Todo el análisis ocurre en el teléfono; las fotos no se suben a ningún lado.
 - Detecta objetos genéricos y lee texto; no identifica personas. Lo fino (llaves en la mano, carpeta sin logo legible) puede no detectarse: por eso se revisa a ojo en la grilla.
 - Tiempo de indexado: depende del teléfono; para unas 30.000 fotos puede llevar varias horas la primera vez. Después solo suma las nuevas.
+
+
+## Novedades (noviembre 2026)
+
+**Pantalla de ingreso.** Al abrir la app aparece el medallón de The DOM Studio Web y el nombre; entra sola en 3 segundos o tocando «Entrar».
+
+**Galería (primera pestaña).** Muestra todas tus fotos, de la más nueva a la más vieja, con filtros por origen y fechas. Al llegar al final carga más sola. Se puede seleccionar (mantené apretada una foto), marcar, eliminar y mover a carpetas igual que en Buscar. Orden de las pestañas: Galería, Indexar, Buscar, Marcadas, Ordenar.
+
+**Buscar en castellano.** Las etiquetas que detecta el teléfono están en inglés; la app las traduce. Escribí «perro», «auto», «playa», «montaña», «torta», «camioneta», etc. y encuentra las fotos (también en plural y con sinónimos). En el visor, los «Objetos» ahora se muestran en castellano. No hace falta volver a indexar. Las palabras que no están en el diccionario (por ejemplo «X5») se buscan en el texto que se lee en la foto y en el nombre del archivo.
+
+**Zoom.** En el visor: pellizcá con dos dedos, o tocá dos veces para acercar y volver. Con la foto ampliada se arrastra para recorrerla. Al acercar, la app carga una versión más nítida. Con la foto sin zoom, deslizá a los costados para pasar a la anterior o la siguiente.
+
+**Editor básico.** En el visor, botón «Editar»: girar, espejo, recortar (libre, 1:1, 4:5, 3:4, 16:9, 9:16), brillo, contraste, saturación, calidez y filtros (Blanco y negro, Sepia, Vívido, Cálido, Frío, Mate, Dramático). «Guardar copia» crea una foto nueva (nombre_editada.jpg) al lado de la original; la original no se toca. La copia aparece arriba de todo en Galería.

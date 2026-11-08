@@ -149,7 +149,8 @@ public class GaleriaPlugin extends Plugin {
                 String pre = new File(gruposDir(), limpioNombre(carpeta)).getAbsolutePath() + "/";
                 w.append("borrada=0 AND substr(ruta,1,").append(pre.length()).append(")=?");
                 args.add(pre);
-            } else w.append("estado=1 AND dup=0 AND borrada=0");
+            } else if (call.getBoolean("todas", false)) w.append("dup=0 AND borrada=0");
+            else w.append("estado=1 AND dup=0 AND borrada=0");
 
             JSArray grupos = call.getArray("grupos");
             if (grupos != null) {
@@ -162,6 +163,11 @@ public class GaleriaPlugin extends Plugin {
                         if (t > 0) w.append(" OR ");
                         if (term.equals("@persona")) { w.append("caras>0"); continue; }
                         if (term.equals("@sinpersona")) { w.append("caras=0"); continue; }
+                        if (term.startsWith("#")) {   // etiqueta exacta (no por pedazos de palabra)
+                            w.append("(',' || etiquetas || ',') LIKE ?");
+                            args.add("%," + term.substring(1).replace("%", "").replace("_", "") + ",%");
+                            continue;
+                        }
                         String compacto = term.replace(" ", "");
                         w.append("(texto LIKE ? OR textoc LIKE ? OR etiquetas LIKE ? OR nombre LIKE ?)");
                         args.add(likeEsc(term)); args.add(likeEsc(compacto)); args.add(likeEsc(term)); args.add(likeEsc(term));
@@ -250,12 +256,91 @@ public class GaleriaPlugin extends Plugin {
     public void vista(PluginCall call) {
         String r = rutaDe((long) call.getInt("id", -1));
         if (r == null) { call.reject("Foto inexistente."); return; }
-        Bitmap b = Img.cargar(r, 1400, null);
+        int max = Math.max(600, Math.min(3200, call.getInt("max", 1400)));
+        Bitmap b = Img.cargar(r, max, null);
         if (b == null) { call.reject("No se pudo abrir la foto."); return; }
         JSObject res = new JSObject();
         res.put("img", aDataUrl(b, 85));
         b.recycle();
         call.resolve(res);
+    }
+
+    /* ---------------- Editor básico ---------------- */
+
+    /** Matriz de color idéntica a la de la vista previa del editor (JS): saturación, calidez, contraste y brillo. */
+    private static android.graphics.ColorMatrix matrizEdicion(int br, int ct, int sa, int wa) {
+        float S = 1f + sa / 100f, W = wa * 0.5f, K = (100 + ct) / 100f, B = br * 1.27f;
+        float lr = 0.299f, lg = 0.587f, lb = 0.114f;
+        android.graphics.ColorMatrix m = new android.graphics.ColorMatrix(new float[]{
+            lr * (1 - S) + S, lg * (1 - S), lb * (1 - S), 0, 0,
+            lr * (1 - S), lg * (1 - S) + S, lb * (1 - S), 0, 0,
+            lr * (1 - S), lg * (1 - S), lb * (1 - S) + S, 0, 0,
+            0, 0, 0, 1, 0});
+        m.postConcat(new android.graphics.ColorMatrix(new float[]{1, 0, 0, 0, W, 0, 1, 0, 0, 0, 0, 0, 1, 0, -W, 0, 0, 0, 1, 0}));
+        m.postConcat(new android.graphics.ColorMatrix(new float[]{K, 0, 0, 0, 128 * (1 - K), 0, K, 0, 0, 128 * (1 - K), 0, 0, K, 0, 128 * (1 - K), 0, 0, 0, 1, 0}));
+        m.postConcat(new android.graphics.ColorMatrix(new float[]{1, 0, 0, 0, B, 0, 1, 0, 0, B, 0, 0, 1, 0, B, 0, 0, 0, 1, 0}));
+        return m;
+    }
+
+    /** Guarda una COPIA editada (gira, espeja, recorta, ajusta color). La foto original no se toca. */
+    @PluginMethod
+    public void editar(PluginCall call) {
+        Bitmap src = null, t = null, rec = null, out = null;
+        try {
+            long id = (long) call.getInt("id", -1);
+            String ruta = rutaDe(id);
+            if (ruta == null) { call.reject("Foto inexistente."); return; }
+            int rot = ((call.getInt("rot", 0) % 4) + 4) % 4;
+            boolean flip = call.getBoolean("flip", false);
+            int br = call.getInt("br", 0), ct = call.getInt("ct", 0), sa = call.getInt("sa", 0), wa = call.getInt("wa", 0);
+            JSObject crop = call.getObject("crop");
+
+            src = Img.cargar(ruta, 3000, null);
+            if (src == null) { call.reject("No se pudo abrir la foto."); return; }
+            android.graphics.Matrix m = new android.graphics.Matrix();
+            if (flip) m.postScale(-1f, 1f);
+            if (rot != 0) m.postRotate(rot * 90f);
+            t = (flip || rot != 0) ? Bitmap.createBitmap(src, 0, 0, src.getWidth(), src.getHeight(), m, true) : src;
+            if (t != src) { src.recycle(); src = null; }
+
+            int W = t.getWidth(), H = t.getHeight(), cx = 0, cy = 0, cw = W, ch = H;
+            if (crop != null) {
+                cx = (int) Math.round(crop.optDouble("x", 0) * W); cy = (int) Math.round(crop.optDouble("y", 0) * H);
+                cw = (int) Math.round(crop.optDouble("w", 1) * W); ch = (int) Math.round(crop.optDouble("h", 1) * H);
+                cx = Math.max(0, Math.min(W - 1, cx)); cy = Math.max(0, Math.min(H - 1, cy));
+                cw = Math.max(1, Math.min(W - cx, cw)); ch = Math.max(1, Math.min(H - cy, ch));
+            }
+            rec = (cx == 0 && cy == 0 && cw == W && ch == H) ? t : Bitmap.createBitmap(t, cx, cy, cw, ch);
+            if (rec != t) { t.recycle(); t = null; }
+
+            out = Bitmap.createBitmap(rec.getWidth(), rec.getHeight(), Bitmap.Config.ARGB_8888);
+            android.graphics.Canvas c = new android.graphics.Canvas(out);
+            android.graphics.Paint p = new android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG);
+            if (br != 0 || ct != 0 || sa != 0 || wa != 0) p.setColorFilter(new android.graphics.ColorMatrixColorFilter(matrizEdicion(br, ct, sa, wa)));
+            c.drawBitmap(rec, 0, 0, p);
+
+            File orig = new File(ruta), dir = orig.getParentFile();
+            String base = orig.getName(); int pt = base.lastIndexOf('.'); if (pt > 0) base = base.substring(0, pt);
+            File dest = new File(dir, base + "_editada.jpg");
+            for (int n = 2; dest.exists(); n++) dest = new File(dir, base + "_editada" + n + ".jpg");
+            try (FileOutputStream fo = new FileOutputStream(dest)) { out.compress(Bitmap.CompressFormat.JPEG, 93, fo); }
+
+            ContentValues cv = new ContentValues();
+            cv.put("ruta", dest.getAbsolutePath()); cv.put("nombre", dest.getName()); cv.put("size", dest.length());
+            cv.put("mod", dest.lastModified()); cv.put("fecha", System.currentTimeMillis()); cv.put("origen", IndexService.origen(dest));
+            long nuevo = db().insertWithOnConflict("fotos", null, cv, SQLiteDatabase.CONFLICT_IGNORE);
+            try { MediaScannerConnection.scanFile(getContext(), new String[]{dest.getAbsolutePath()}, null, null); } catch (Throwable ignored) { }
+            JSObject res = new JSObject();
+            res.put("id", nuevo); res.put("nombre", dest.getName()); res.put("carpeta", dir.getAbsolutePath());
+            call.resolve(res);
+        } catch (Throwable e) {
+            call.reject("No se pudo guardar la edición: " + e.getMessage());
+        } finally {
+            try { if (src != null) src.recycle(); } catch (Throwable ignored) { }
+            try { if (t != null) t.recycle(); } catch (Throwable ignored) { }
+            try { if (rec != null) rec.recycle(); } catch (Throwable ignored) { }
+            try { if (out != null) out.recycle(); } catch (Throwable ignored) { }
+        }
     }
 
     /* ---------------- Marcar ---------------- */
