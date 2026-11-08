@@ -186,7 +186,7 @@ public class IndexService extends Service {
                 if (ruta.endsWith("/Android/data") || ruta.endsWith("/Android/obb")) continue;
                 if (n.equals(GaleriaPlugin.CARPETA_EXPORT)) continue;
                 recorrer(f, out);
-            } else if (!n.startsWith(".") && esImagen(n) && f.length() >= MIN_KB * 1024L) {
+            } else if (!n.startsWith(".") && ((esImagen(n) && f.length() >= MIN_KB * 1024L) || (Img.esVideo(n) && f.length() >= 200 * 1024L))) {
                 out.add(f);
             }
         }
@@ -211,6 +211,7 @@ public class IndexService extends Service {
                 cv.clear();
                 cv.put("ruta", ruta); cv.put("nombre", f.getName()); cv.put("size", f.length());
                 cv.put("mod", f.lastModified()); cv.put("fecha", fechaDe(f)); cv.put("origen", origen(f));
+                cv.put("tipo", Img.esVideo(f.getName()) ? 1 : 0);
                 db.insertWithOnConflict("fotos", null, cv, SQLiteDatabase.CONFLICT_IGNORE);
             }
             // fotos que ya no están en el teléfono
@@ -264,8 +265,9 @@ public class IndexService extends Service {
     private void analizar(SQLiteDatabase db) {
         List<long[]> idsL = new ArrayList<>();
         List<String> rutas = new ArrayList<>();
-        Cursor c = db.rawQuery("SELECT id, ruta FROM fotos WHERE estado=0 AND dup=0 ORDER BY id", null);
-        while (c.moveToNext()) { idsL.add(new long[]{c.getLong(0)}); rutas.add(c.getString(1)); }
+        final List<Boolean> esVid = new ArrayList<>();
+        Cursor c = db.rawQuery("SELECT id, ruta, tipo FROM fotos WHERE estado=0 AND dup=0 ORDER BY id", null);
+        while (c.moveToNext()) { idsL.add(new long[]{c.getLong(0)}); rutas.add(c.getString(1)); esVid.add(c.getInt(2) == 1); }
         c.close();
         final int n = rutas.size();
         total = n; hechas = 0; inicioAnalisis = System.currentTimeMillis();
@@ -289,23 +291,30 @@ public class IndexService extends Service {
                     ContentValues cv = new ContentValues();
                     try {
                         int[] dims = new int[2];
-                        Bitmap b = Img.cargar(rutas.get(i), 800, dims);
-                        if (b == null) { cv.put("estado", 2); }
+                        final boolean video = esVid.get(i);
+                        List<Bitmap> bs = new ArrayList<>();
+                        long[] info = new long[3];
+                        if (video) { bs = Img.fotogramas(rutas.get(i), 800, 3, info); dims[0] = (int) info[0]; dims[1] = (int) info[1]; }
+                        else { Bitmap b0 = Img.cargar(rutas.get(i), 800, dims); if (b0 != null) bs.add(b0); }
+                        if (bs.isEmpty()) { cv.put("estado", 2); if (video) cv.put("dur", info[2]); }
                         else {
-                            InputImage img = InputImage.fromBitmap(b, 0);
-                            int nCaras = 0; String et = "", tx = "";
-                            try { nCaras = Tasks.await(caras.process(img)).size(); } catch (Throwable ignored) { }
-                            try {
-                                StringBuilder sb = new StringBuilder();
-                                for (ImageLabel l : Tasks.await(etiquetas.process(img))) { if (sb.length() > 0) sb.append(','); sb.append(l.getText().toLowerCase(Locale.ROOT)); }
-                                et = sb.toString();
-                            } catch (Throwable ignored) { }
-                            try { tx = Tasks.await(ocr.process(img)).getText(); } catch (Throwable ignored) { }
-                            long dh = Img.huella(b);
-                            b.recycle();
-                            String limpio = Img.norm(tx).replaceAll("\\s+", " ").trim();
-                            cv.put("estado", 1); cv.put("w", dims[0]); cv.put("h", dims[1]); cv.put("dh", dh);
-                            cv.put("caras", nCaras); cv.put("etiquetas", et);
+                            int nCaras = 0; long dh = 0;
+                            java.util.LinkedHashSet<String> ets = new java.util.LinkedHashSet<>();
+                            StringBuilder tx = new StringBuilder();
+                            for (int k = 0; k < bs.size(); k++) {
+                                Bitmap b = bs.get(k);
+                                InputImage img = InputImage.fromBitmap(b, 0);
+                                try { nCaras = Math.max(nCaras, Tasks.await(caras.process(img)).size()); } catch (Throwable ignored) { }
+                                try { for (ImageLabel l : Tasks.await(etiquetas.process(img))) ets.add(l.getText().toLowerCase(Locale.ROOT)); } catch (Throwable ignored) { }
+                                try { String t1 = Tasks.await(ocr.process(img)).getText(); if (t1 != null && !t1.isEmpty()) { if (tx.length() > 0) tx.append(' '); tx.append(t1); } } catch (Throwable ignored) { }
+                                if (k == 0 && !video) dh = Img.huella(b);
+                                b.recycle();
+                            }
+                            if (video) ets.add("video");
+                            String limpio = Img.norm(tx.toString()).replaceAll("\\s+", " ").trim();
+                            cv.put("estado", 1); cv.put("w", dims[0]); cv.put("h", dims[1]);
+                            if (!video) cv.put("dh", dh); else cv.put("dur", info[2]);
+                            cv.put("caras", nCaras); cv.put("etiquetas", android.text.TextUtils.join(",", ets));
                             cv.put("texto", limpio.length() > 600 ? limpio.substring(0, 600) : limpio);
                             cv.put("textoc", limpio.replace(" ", ""));
                         }
@@ -326,7 +335,7 @@ public class IndexService extends Service {
 
     private void repetidasParecidas(SQLiteDatabase db) {
         List<long[]> datos = new ArrayList<>();   // id, dh, size, w, h
-        Cursor c = db.rawQuery("SELECT id, dh, size, w, h FROM fotos WHERE estado=1 AND dup=0 AND dh IS NOT NULL", null);
+        Cursor c = db.rawQuery("SELECT id, dh, size, w, h FROM fotos WHERE estado=1 AND dup=0 AND tipo=0 AND dh IS NOT NULL", null);
         while (c.moveToNext()) datos.add(new long[]{c.getLong(0), c.getLong(1), c.getLong(2), c.getLong(3), c.getLong(4)});
         c.close();
         int n = datos.size();

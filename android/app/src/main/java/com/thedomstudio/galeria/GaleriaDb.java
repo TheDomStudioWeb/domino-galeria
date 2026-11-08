@@ -14,7 +14,7 @@ public class GaleriaDb extends SQLiteOpenHelper {
         return inst;
     }
 
-    private GaleriaDb(Context c) { super(c, "galeria.db", null, 2); }
+    private GaleriaDb(Context c) { super(c, "galeria.db", null, 3); }
 
     @Override
     public void onCreate(SQLiteDatabase db) {
@@ -30,7 +30,9 @@ public class GaleriaDb extends SQLiteOpenHelper {
             + "marca TEXT,"                    // entrega | plan | descartar | NULL
             + "orig INTEGER,"                  // si es repetida: id de la foto que se queda como original
             + "borrada INTEGER DEFAULT 0,"     // 1 = está en la papelera de la app
-            + "ruta_orig TEXT)");              // de dónde vino, para restaurarla
+            + "ruta_orig TEXT,"                // de dónde vino, para restaurarla
+            + "tipo INTEGER DEFAULT 0,"        // 0 foto, 1 video
+            + "dur INTEGER DEFAULT 0)");       // duración del video en milisegundos
         db.execSQL("CREATE INDEX i_estado ON fotos(estado, dup)");
         db.execSQL("CREATE INDEX i_marca ON fotos(marca)");
         db.execSQL("CREATE INDEX i_fecha ON fotos(fecha)");
@@ -45,6 +47,10 @@ public class GaleriaDb extends SQLiteOpenHelper {
             db.execSQL("ALTER TABLE fotos ADD COLUMN borrada INTEGER DEFAULT 0");
             db.execSQL("ALTER TABLE fotos ADD COLUMN ruta_orig TEXT");
             db.execSQL("CREATE INDEX IF NOT EXISTS i_borrada ON fotos(borrada)");
+        }
+        if (o < 3) {
+            db.execSQL("ALTER TABLE fotos ADD COLUMN tipo INTEGER DEFAULT 0");
+            db.execSQL("ALTER TABLE fotos ADD COLUMN dur INTEGER DEFAULT 0");
         }
     }
 }

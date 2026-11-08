@@ -66,4 +66,39 @@ public class Img {
     public static String norm(String s) {
         return Normalizer.normalize(s == null ? "" : s, Normalizer.Form.NFD).replaceAll("\\p{M}", "").toLowerCase(Locale.ROOT);
     }
+
+    static boolean esVideo(String nombre) {
+        String s = nombre.toLowerCase(Locale.ROOT);
+        return s.endsWith(".mp4") || s.endsWith(".mov") || s.endsWith(".3gp") || s.endsWith(".mkv") || s.endsWith(".webm") || s.endsWith(".m4v") || s.endsWith(".avi");
+    }
+
+    /** Cuadros de un video, ya derechos y achicados (lado largo ≈ maxLado). info (opcional) recibe {ancho, alto, duración en ms}. */
+    public static java.util.List<Bitmap> fotogramas(String ruta, int maxLado, int cuantos, long[] info) {
+        java.util.List<Bitmap> out = new java.util.ArrayList<>();
+        android.media.MediaMetadataRetriever mr = new android.media.MediaMetadataRetriever();
+        try {
+            mr.setDataSource(ruta);
+            long dur = 0; int w = 0, h = 0, rot = 0;
+            try { dur = Long.parseLong(mr.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)); } catch (Throwable ignored) { }
+            try { w = Integer.parseInt(mr.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)); } catch (Throwable ignored) { }
+            try { h = Integer.parseInt(mr.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)); } catch (Throwable ignored) { }
+            try { rot = Integer.parseInt(mr.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)); } catch (Throwable ignored) { }
+            if (info != null) { info[0] = (rot == 90 || rot == 270) ? h : w; info[1] = (rot == 90 || rot == 270) ? w : h; info[2] = dur; }
+            for (int i = 0; i < cuantos; i++) {
+                long t = cuantos == 1 ? Math.min(dur, 1000) : dur * (2 * i + 1) / (2L * cuantos);   // 1 cuadro: a 1 s; varios: parejos
+                Bitmap b = null;
+                try { b = mr.getFrameAtTime(Math.max(0, t) * 1000L, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC); } catch (Throwable ignored) { }
+                if (b == null) continue;   // getFrameAtTime ya entrega el cuadro con la rotación aplicada
+                int mayor = Math.max(b.getWidth(), b.getHeight());
+                if (mayor > maxLado) {
+                    float e = (float) maxLado / mayor;
+                    Bitmap r = Bitmap.createScaledBitmap(b, Math.max(1, Math.round(b.getWidth() * e)), Math.max(1, Math.round(b.getHeight() * e)), true);
+                    if (r != b) { b.recycle(); b = r; }
+                }
+                out.add(b);
+            }
+        } catch (Throwable ignored) {
+        } finally { try { mr.release(); } catch (Throwable ignored) { } }
+        return out;
+    }
 }

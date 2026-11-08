@@ -109,6 +109,15 @@ input[type=date]{color-scheme:dark}
 .tile.queda{opacity:.55}
 .tile.queda .tag{color:var(--tx)}
 .carp{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+/* videos */
+.tile .vid{position:absolute;right:0;bottom:0;padding:2px 6px;font:700 10px 'Montserrat',sans-serif;background:#0A0A0Acc;color:var(--gold2)}
+#v-play{position:absolute;left:50%;top:50%;width:76px;height:76px;margin:-38px 0 0 -38px;border-radius:50%;border:2px solid var(--gold);background:rgba(10,10,10,.6);color:var(--gold);font-size:32px;display:none;align-items:center;justify-content:center;z-index:2;cursor:pointer;padding:0}
+#viewer.vid #v-play{display:flex}
+#viewer .img.reproduciendo #v-play{display:none}
+#v-video{position:absolute;inset:0;width:100%;height:100%;background:#000;display:none;z-index:1;object-fit:contain}
+#viewer .img.reproduciendo #v-video{display:block}
+#viewer.vid [data-vx=editar]{display:none}
+#viewer:not(.vid) .solovid{display:none}
 /* ingreso */
 #ingreso{position:fixed;inset:0;z-index:60;background:radial-gradient(ellipse at 50% 40%,#1d170a 0%,#0e0c07 55%,#0A0A0A 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;text-align:center;transition:opacity .45s}
 #ingreso.fuera{opacity:0;pointer-events:none}
@@ -166,6 +175,7 @@ input[type=date]{color-scheme:dark}
 <section id="v-galeria" class="on">
   <div class="filters">
     <select id="g-origen"><option value="">Todos los orígenes</option><option value="whatsapp">WhatsApp</option><option value="camara">Cámara</option></select>
+    <select id="g-tipo"><option value="">Fotos y videos</option><option value="foto">Solo fotos</option><option value="video">Solo videos</option></select>
     <input id="g-desde" type="date" aria-label="Desde">
     <input id="g-hasta" type="date" aria-label="Hasta">
   </div>
@@ -213,6 +223,7 @@ input[type=date]{color-scheme:dark}
   <input id="q" type="search" placeholder="Palabras: perro, auto, playa, X5, llaves…" enterkeyhint="search" autocomplete="off">
   <div class="chips" id="atajos" style="margin-top:10px"></div>
   <div class="filters">
+    <select id="f-tipo"><option value="">Fotos y videos</option><option value="foto">Solo fotos</option><option value="video">Solo videos</option></select>
     <select id="f-origen"><option value="">Todos los orígenes</option><option value="whatsapp">WhatsApp</option><option value="camara">Cámara</option></select>
     <select id="f-marca"><option value="sin">Sin marcar</option><option value="">Todas</option><option value="cualquiera">Marcadas</option></select>
     <input id="f-desde" type="date" aria-label="Desde">
@@ -298,13 +309,14 @@ input[type=date]{color-scheme:dark}
 
 <div id="viewer">
   <div class="top"><span id="v-pos"></span><button class="btn ghost" id="v-cerrar" style="min-height:36px">Cerrar</button></div>
-  <div class="img"><img id="v-img" alt="Foto"><button class="nav l" id="v-prev" aria-label="Anterior">‹</button><button class="nav r" id="v-next" aria-label="Siguiente">›</button><span id="v-zoom">100%</span></div>
+  <div class="img"><img id="v-img" alt="Foto"><button class="nav l" id="v-prev" aria-label="Anterior">‹</button><button class="nav r" id="v-next" aria-label="Siguiente">›</button><span id="v-zoom">100%</span><button id="v-play" aria-label="Reproducir">▶</button><video id="v-video" controls playsinline preload="metadata"></video></div>
   <div class="info" id="v-info"></div>
   <div class="acts">
     <button class="btn" data-vm="entrega">Entrega</button>
     <button class="btn" data-vm="plan">Plan</button>
     <button class="btn sec" data-vm="descartar">Descartar</button>
     <button class="btn sec" data-vx="editar">Editar</button>
+    <button class="btn sec solovid" data-vx="externo">Abrir en el reproductor</button>
     <button class="btn sec" data-vx="carpeta">Carpeta…</button>
     <button class="btn sec danger" data-vx="borrar">Eliminar</button>
     <button class="btn" data-vx="rest">Restaurar</button>
@@ -379,14 +391,15 @@ const CAP = window.Capacitor;
 const NATIVE = !!(CAP && CAP.isNativePlatform && CAP.isNativePlatform());
 const G = NATIVE ? CAP.registerPlugin('Galeria') : (function(){
   const hoy = Date.now(), items = [];
-  for (let i = 0; i < 260; i++) items.push({id:i+1, nombre:'IMG_'+i+'.jpg', fecha:new Date(hoy - i*86400000*5).toISOString().slice(0,10), origen:i%3?'WhatsApp':'Cámara (Camera)', caras:i%2, etiquetas:i%2?'car,vehicle':'text', texto:i%4?'x5 plan de ahorro':'', marca:i%11===0?'entrega':(i%17===0?'plan':'')});
+  for (let i = 0; i < 260; i++) items.push({id:i+1, nombre:'IMG_'+i+'.jpg', fecha:new Date(hoy - i*86400000*5).toISOString().slice(0,10), origen:i%3?'WhatsApp':'Cámara (Camera)', caras:i%2, etiquetas:i%2?'car,vehicle':'text', tipo:i%7===3?1:0, dur:i%7===3?(25000+i*1300):0, texto:i%4?'x5 plan de ahorro':'', marca:i%11===0?'entrega':(i%17===0?'plan':'')});
   const est = {corriendo:false, fase:'Analizando fotos', hechas:0, total:0, registradas:30412, repetidas:7000, papelera:5, papeleraMB:20, analizadas:0, pendientes:24292, errores:0, entregas:57, planes:14, descartadas:3, segundos:0, error:''};
   return {
     permiso: async () => ({ok:true}), pedirPermiso: async () => {},
     iniciar: async () => { est.corriendo = true; est.total = 24292; est.hechas = 3100; est.segundos = 620; est.analizadas = 3100; est.pendientes = 21192; },
     pausar: async () => { est.corriendo = false; est.fase = 'Pausado'; },
     estado: async () => est,
-    buscar: async (p) => ({total:items.length, items:items.slice(p.offset||0,(p.offset||0)+(p.limite||60))}),
+    buscar: async (p) => { const l = p.tipo === 'video' ? items.filter(x => x.tipo) : p.tipo === 'foto' ? items.filter(x => !x.tipo) : items; return {total:l.length, items:l.slice(p.offset||0,(p.offset||0)+(p.limite||60))}; },
+    rutaVideo: async () => ({ruta:'/storage/emulated/0/DCIM/Camera/VID_demo.mp4'}), abrirVideo: async () => { window.__externo = true; },
     miniaturas: async (p) => { const o = {}; (p.ids||[]).forEach(id => { const h = (id*47)%360; o[id] = 'data:image/svg+xml;utf8,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><rect width="200" height="200" fill="hsl('+h+',35%,32%)"/><circle cx="100" cy="90" r="34" fill="hsl('+h+',35%,55%)"/></svg>'); }); return o; },
     vista: async (p) => ({img:'data:image/svg+xml;utf8,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600"><rect width="800" height="600" fill="#33414f"/><circle cx="400" cy="260" r="110" fill="#6d8299"/></svg>')}),
     marcar: async () => {}, editar: async (p) => ({id:9999, nombre:'IMG_editada.jpg', carpeta:'/storage/emulated/0/DCIM/Camera'}),
@@ -481,13 +494,14 @@ async function procesarMini(){
 const sel = new Set();
 let modoSel = false;
 const MARCA_TXT = {entrega:'ENTREGA', plan:'PLAN', descartar:'DESCARTADA'};
+function durTxt(ms){ const t = Math.round((ms || 0) / 1000), m = Math.floor(t / 60), s = t % 60, h = Math.floor(m / 60); return h ? h + ':' + String(m % 60).padStart(2, '0') + ':' + String(s).padStart(2, '0') : m + ':' + String(s).padStart(2, '0'); }
 function pintarGrid(contenedor, items, reset){
   if (reset) contenedor.innerHTML = '';
   items.forEach(it => {
     const t = document.createElement('div');
     t.className = 'tile' + (sel.has(it.id) ? ' sel' : '');
     t.dataset.id = it.id;
-    t.innerHTML = '<img alt="" decoding="async"><span class="ck">✓</span>' + (it.marca ? '<span class="tag ' + it.marca + '">' + MARCA_TXT[it.marca] + '</span>' : '');
+    t.innerHTML = '<img alt="" decoding="async"><span class="ck">✓</span>' + (it.marca ? '<span class="tag ' + it.marca + '">' + MARCA_TXT[it.marca] + '</span>' : '') + (it.tipo === 1 ? '<span class="vid">▶ ' + durTxt(it.dur) + '</span>' : '');
     let largo = null, movio = false;
     t.addEventListener('touchstart', () => { movio = false; largo = setTimeout(() => { largo = null; modoSel = true; alternar(it.id, t); }, 450); }, {passive:true});
     t.addEventListener('touchmove', () => { movio = true; clearTimeout(largo); largo = null; }, {passive:true});
@@ -517,7 +531,7 @@ function quitarLocal(L, ids){
   L.items = L.items.filter(it => !set.has(it.id));
   L.total = Math.max(0, L.total - set.size); L.offset = L.items.length;
   set.forEach(id => { const t = $(L.grid).querySelector('.tile[data-id="' + id + '"]'); if (t) t.remove(); });
-  $(L.count).textContent = fmt(L.total) + (L.total === 1 ? ' foto' : ' fotos');
+  const _v = L.params && L.params.tipo === 'video'; $(L.count).textContent = fmt(L.total) + (_v ? (L.total === 1 ? ' video' : ' videos') : (L.total === 1 ? ' foto' : ' fotos'));
   $(L.mas).hidden = L.items.length >= L.total;
 }
 function marcarLocal(L, ids, marca){
@@ -587,7 +601,7 @@ async function consultar(L, reset){
   const r = await G.buscar(Object.assign({offset: L.offset, limite: 60}, L.params));
   L.total = r.total; L.items = L.items.concat(r.items); L.offset = L.items.length; L.hecho = true;
   pintarGrid($(L.grid), r.items, reset);
-  $(L.count).textContent = fmt(L.total) + (L.total === 1 ? ' foto' : ' fotos');
+  const _v = L.params && L.params.tipo === 'video'; $(L.count).textContent = fmt(L.total) + (_v ? (L.total === 1 ? ' video' : ' videos') : (L.total === 1 ? ' foto' : ' fotos'));
   $(L.mas).hidden = L.items.length >= L.total;
   if (reset && !L.total) $(L.grid).innerHTML = '<div class="empty" style="grid-column:1/-1">No hay fotos con esos criterios.<br>Probá con otras palabras o indexá más fotos.</div>';
 }
@@ -598,25 +612,25 @@ async function buscar(reset){
   const q = $('#q').value.trim();
   B.params = {
     grupos: atajoSel >= 0 && !q ? ATAJOS[atajoSel].g : gruposDe(q),
-    origen: $('#f-origen').value, marca: $('#f-marca').value, desde: $('#f-desde').value, hasta: $('#f-hasta').value
+    tipo: $('#f-tipo').value, origen: $('#f-origen').value, marca: $('#f-marca').value, desde: $('#f-desde').value, hasta: $('#f-hasta').value
   };
   try { await consultar(B, reset); } catch (e){ $('#b-count').textContent = 'Error: ' + (e && e.message || e); }
 }
 $('#b-buscar').onclick = () => { atajoSel >= 0 && $('#q').value.trim() && (atajoSel = -1, $$('#atajos .chip').forEach(x => x.classList.remove('on'))); buscar(true); };
 $('#q').addEventListener('keydown', e => { if (e.key === 'Enter'){ e.preventDefault(); $('#q').blur(); $('#b-buscar').click(); } });
-['#f-origen', '#f-marca', '#f-desde', '#f-hasta'].forEach(s => $(s).onchange = () => buscar(true));
+['#f-tipo', '#f-origen', '#f-marca', '#f-desde', '#f-hasta'].forEach(s => $(s).onchange = () => buscar(true));
 $('#b-mas').onclick = () => consultar(B, false);
 
 /* ---------- Galería (todas las fotos, de la más nueva a la más vieja) ---------- */
 async function cargarGaleria(reset){
-  GA.params = {grupos:[], todas:true, marca:'', origen:$('#g-origen').value, desde:$('#g-desde').value, hasta:$('#g-hasta').value};
+  GA.params = {grupos:[], todas:true, marca:'', tipo:$('#g-tipo').value, origen:$('#g-origen').value, desde:$('#g-desde').value, hasta:$('#g-hasta').value};
   try {
     await consultar(GA, reset);
-    $('#g-vacia').hidden = GA.total > 0 || !!(GA.params.origen || GA.params.desde || GA.params.hasta);
+    $('#g-vacia').hidden = GA.total > 0 || !!(GA.params.tipo || GA.params.origen || GA.params.desde || GA.params.hasta);
     if (reset && !GA.total) $(GA.grid).innerHTML = '';
   } catch (e){ $('#g-count').textContent = 'Error: ' + (e && e.message || e); }
 }
-['#g-origen', '#g-desde', '#g-hasta'].forEach(s => $(s).onchange = () => cargarGaleria(true));
+['#g-tipo', '#g-origen', '#g-desde', '#g-hasta'].forEach(s => $(s).onchange = () => cargarGaleria(true));
 $('#g-mas').onclick = () => { GA.params = Object.assign({}, GA.params); consultar(GA, false); };
 if ('IntersectionObserver' in window){
   /* al llegar al final de la galería se cargan más fotos solas */
@@ -653,6 +667,8 @@ async function mostrar(){
   $('#v-pos').textContent = (visor.i + 1) + ' de ' + fmt(L.total) + ' · ' + it.fecha + ' · ' + it.origen;
   $('#v-info').textContent = (it.marca ? 'Marcada: ' + MARCA_TXT[it.marca] + '. ' : '') + (it.caras ? it.caras + ' cara(s). ' : '') + (it.etiquetas ? 'Objetos: ' + (window.ETQ ? window.ETQ.mostrar(it.etiquetas) : it.etiquetas) + '. ' : '') + (it.texto ? 'Texto: ' + it.texto : '');
   const im = $('#v-img'); im.removeAttribute('src');
+  detenerVideo(); $('#viewer').classList.toggle('vid', it.tipo === 1);
+  if (it.tipo === 1) $('#v-pos').textContent += ' · video ' + durTxt(it.dur);
   zReset(); Z.grande = false;
   const cual = it.id;
   try { const r = await G.vista({id: it.id}); if (L.items[visor.i] && L.items[visor.i].id === cual) im.src = r.img; } catch {}
@@ -666,8 +682,34 @@ function mover(d){
 $('#v-prev').onclick = () => { if (Z.moved){ Z.moved = false; return; } mover(-1); };
 $('#v-next').onclick = () => { if (Z.moved){ Z.moved = false; return; } mover(1); };
 
+/* Video: se reproduce dentro de la app; si el reproductor interno no arranca, se abre el del teléfono */
+function detenerVideo(){
+  const v = $('#v-video'); try { v.pause(); } catch {} v.removeAttribute('src'); try { v.load(); } catch {}
+  $('#viewer .img').classList.remove('reproduciendo'); Z.off = false;
+}
+$('#v-play').onclick = async () => {
+  const it = visor.L && visor.L.items[visor.i]; if (!it) return;
+  const v = $('#v-video'), caja = $('#viewer .img');
+  try {
+    const r = await G.rutaVideo({id: it.id});
+    const cap = window.Capacitor;
+    let src = r.ruta;
+    if (cap && cap.convertFileSrc) src = cap.convertFileSrc('file://' + r.ruta);
+    let listo = false;
+    v.onloadedmetadata = () => { listo = true; };
+    v.onerror = () => { if (!listo) externo(it); };
+    caja.classList.add('reproduciendo'); Z.off = true; zReset();
+    v.src = src; v.play().catch(() => {});
+    setTimeout(() => { if (!listo && caja.classList.contains('reproduciendo')) externo(it); }, 3500);
+  } catch (e){ aviso(String(e && e.message || e)); }
+};
+async function externo(it){
+  detenerVideo();
+  try { await G.abrirVideo({id: it.id}); } catch (e){ aviso(String(e && e.message || e)); }
+}
+
 /* Zoom: pellizco con dos dedos, doble toque, arrastrar para recorrer; deslizar de lado cambia de foto */
-const Z = {s:1, x:0, y:0, moved:false, grande:false};
+const Z = {s:1, x:0, y:0, moved:false, grande:false, off:false};
 function zAplicar(){
   const c = $('#viewer .img');
   $('#v-img').style.transform = Z.s > 1.001 ? 'translate(' + Z.x + 'px,' + Z.y + 'px) scale(' + Z.s + ')' : '';
@@ -698,12 +740,13 @@ async function pedirGrande(){
   let d0 = 0, s0 = 1, ini = null, ultimoToque = 0, ultX = 0, ultY = 0;
   const rel = e => { const b = c.getBoundingClientRect(); return {x: e.clientX - b.left - b.width / 2, y: e.clientY - b.top - b.height / 2}; };
   c.addEventListener('pointerdown', e => {
+    if (Z.off) return;
     pts.set(e.pointerId, {x: e.clientX, y: e.clientY}); Z.moved = false;
     if (pts.size === 1) ini = {x: e.clientX, y: e.clientY, t: Date.now(), zx: Z.x, zy: Z.y};
     if (pts.size === 2){ const a = [...pts.values()]; d0 = Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y); s0 = Z.s; }
   });
   c.addEventListener('pointermove', e => {
-    if (!pts.has(e.pointerId)) return;
+    if (Z.off || !pts.has(e.pointerId)) return;
     pts.set(e.pointerId, {x: e.clientX, y: e.clientY});
     if (pts.size === 2){
       const a = [...pts.values()], d = Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y);
@@ -734,9 +777,9 @@ async function pedirGrande(){
   };
   c.addEventListener('pointerup', fin); c.addEventListener('pointercancel', e => { pts.delete(e.pointerId); ini = null; });
   /* rueda del mouse (para probar en la compu) */
-  c.addEventListener('wheel', e => { e.preventDefault(); const p = rel(e); zHacia(Z.s * (e.deltaY < 0 ? 1.2 : 1 / 1.2), p.x, p.y); }, {passive:false});
+  c.addEventListener('wheel', e => { if (Z.off) return; e.preventDefault(); const p = rel(e); zHacia(Z.s * (e.deltaY < 0 ? 1.2 : 1 / 1.2), p.x, p.y); }, {passive:false});
 })();
-$('#v-cerrar').onclick = () => { $('#viewer').classList.remove('on'); refrescarEstado(); };
+$('#v-cerrar').onclick = () => { detenerVideo(); $('#viewer').classList.remove('on'); refrescarEstado(); };
 $$('[data-vm]').forEach(b => b.onclick = async () => {
   const it = visor.L.items[visor.i]; if (!it) return;
   const nueva = it.marca === b.dataset.vm ? '' : b.dataset.vm;
@@ -908,14 +951,15 @@ function quitarDelVisor(it){
   if (k >= 0) L.items.splice(k, 1);
   L.total = Math.max(0, L.total - 1); L.offset = L.items.length;
   const t = document.querySelector('.tile[data-id="' + it.id + '"]'); if (t) t.remove();
-  $(L.count).textContent = fmt(L.total) + (L.total === 1 ? ' foto' : ' fotos');
+  const _v = L.params && L.params.tipo === 'video'; $(L.count).textContent = fmt(L.total) + (_v ? (L.total === 1 ? ' video' : ' videos') : (L.total === 1 ? ' foto' : ' fotos'));
   if (!L.items.length){ $('#viewer').classList.remove('on'); refrescarEstado(); return; }
   visor.i = Math.min(k < 0 ? visor.i : k, L.items.length - 1); mostrar();
 }
 $$('[data-vx]').forEach(b => b.onclick = async () => {
   const it = visor.L.items[visor.i]; if (!it) return;
   const a = b.dataset.vx;
-  if (a === 'editar'){ abrirEditor(it); }
+  if (a === 'externo'){ try { await G.abrirVideo({id: it.id}); } catch (e){ aviso(String(e && e.message || e)); } }
+  else if (a === 'editar'){ abrirEditor(it); }
   else if (a === 'carpeta'){ if (await carpetaIds([it.id])) quitarDelVisor(it); }
   else if (a === 'borrar'){ if (await eliminarIds([it.id])) quitarDelVisor(it); }
   else if (a === 'rest'){ try { await G.restaurar({ids:[it.id]}); aviso('Foto restaurada.'); quitarDelVisor(it); } catch (e){ aviso(String(e && e.message || e)); } }

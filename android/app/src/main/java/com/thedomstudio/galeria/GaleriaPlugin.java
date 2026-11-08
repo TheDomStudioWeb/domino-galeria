@@ -178,6 +178,9 @@ public class GaleriaPlugin extends Plugin {
             String origen = call.getString("origen", "");
             if ("whatsapp".equals(origen)) w.append(" AND origen LIKE 'WhatsApp%'");
             else if ("camara".equals(origen)) w.append(" AND origen LIKE 'C%mara%'");
+            String tipo = call.getString("tipo", "");
+            if ("foto".equals(tipo)) w.append(" AND tipo=0");
+            else if ("video".equals(tipo)) w.append(" AND tipo=1");
             String marca = call.getString("marca", "");
             if ("sin".equals(marca)) w.append(" AND marca IS NULL");
             else if ("cualquiera".equals(marca)) w.append(" AND marca IS NOT NULL AND marca<>'descartar'");
@@ -193,7 +196,7 @@ public class GaleriaPlugin extends Plugin {
             cn.close();
 
             int offset = call.getInt("offset", 0), limite = Math.max(1, Math.min(200, call.getInt("limite", 60)));
-            Cursor c = db().rawQuery("SELECT id, nombre, fecha, origen, caras, etiquetas, texto, marca FROM fotos WHERE " + w
+            Cursor c = db().rawQuery("SELECT id, nombre, fecha, origen, caras, etiquetas, texto, marca, tipo, dur FROM fotos WHERE " + w
                 + " ORDER BY fecha DESC LIMIT " + limite + " OFFSET " + offset, a);
             JSArray items = new JSArray();
             while (c.moveToNext()) {
@@ -207,6 +210,7 @@ public class GaleriaPlugin extends Plugin {
                 o.put("etiquetas", et == null ? "" : et);
                 o.put("texto", tx == null ? "" : (tx.length() > 80 ? tx.substring(0, 80) : tx));
                 o.put("marca", c.isNull(7) ? "" : c.getString(7));
+                o.put("tipo", c.getInt(8)); o.put("dur", c.getLong(9));
                 items.put(o);
             }
             c.close();
@@ -234,6 +238,34 @@ public class GaleriaPlugin extends Plugin {
         return "data:image/jpeg;base64," + Base64.encodeToString(bos.toByteArray(), Base64.NO_WRAP);
     }
 
+    private static Bitmap primero(java.util.List<Bitmap> l) { return l.isEmpty() ? null : l.get(0); }
+
+    /** Ruta del video para reproducirlo dentro de la app. */
+    @PluginMethod
+    public void rutaVideo(PluginCall call) {
+        String r = rutaDe((long) call.getInt("id", -1));
+        if (r == null) { call.reject("Video inexistente."); return; }
+        JSObject res = new JSObject();
+        res.put("ruta", r);
+        call.resolve(res);
+    }
+
+    /** Abre el video con el reproductor del teléfono (plan B si no anda el reproductor interno). */
+    @PluginMethod
+    public void abrirVideo(PluginCall call) {
+        try {
+            String r = rutaDe((long) call.getInt("id", -1));
+            if (r == null) { call.reject("Video inexistente."); return; }
+            Uri uri = androidx.core.content.FileProvider.getUriForFile(getContext(), getContext().getPackageName() + ".fileprovider", new File(r));
+            Intent i = new Intent(Intent.ACTION_VIEW).setDataAndType(uri, "video/*");
+            i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(i);
+            call.resolve();
+        } catch (Throwable e) {
+            call.reject("No se pudo abrir el video: " + e.getMessage());
+        }
+    }
+
     @PluginMethod
     public void miniaturas(PluginCall call) {
         JSArray ids = call.getArray("ids");
@@ -243,7 +275,7 @@ public class GaleriaPlugin extends Plugin {
                 long id = ids.optLong(i);
                 String r = rutaDe(id);
                 if (r == null) continue;
-                Bitmap b = Img.cargar(r, 260, null);
+                Bitmap b = Img.esVideo(r) ? primero(Img.fotogramas(r, 260, 1, null)) : Img.cargar(r, 260, null);
                 if (b == null) continue;
                 res.put(String.valueOf(id), aDataUrl(b, 70));
                 b.recycle();
@@ -257,7 +289,7 @@ public class GaleriaPlugin extends Plugin {
         String r = rutaDe((long) call.getInt("id", -1));
         if (r == null) { call.reject("Foto inexistente."); return; }
         int max = Math.max(600, Math.min(3200, call.getInt("max", 1400)));
-        Bitmap b = Img.cargar(r, max, null);
+        Bitmap b = Img.esVideo(r) ? primero(Img.fotogramas(r, max, 1, null)) : Img.cargar(r, max, null);
         if (b == null) { call.reject("No se pudo abrir la foto."); return; }
         JSObject res = new JSObject();
         res.put("img", aDataUrl(b, 85));
